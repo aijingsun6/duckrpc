@@ -1,0 +1,89 @@
+import time
+
+from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory, DuckPoolItem, T
+
+import unittest
+from concurrent.futures import ThreadPoolExecutor
+
+
+import logging
+import sys
+logging.basicConfig(stream=sys.stdout,
+                    level=logging.INFO,
+                    format="%(asctime)s %(name)s %(levelname)s %(filename)s %(funcName)s %(message)s")
+logger = logging.getLogger(__name__)
+
+
+
+class DuckPoolFactoryTest(DuckPoolFactory):
+    index = 0
+
+    def __init__(self):
+        self.index = 0
+
+    def create(self) -> T:
+        r = "name-{}".format(self.index)
+        self.index += 1
+        return r
+
+    def destroy(self, value: T) -> None:
+        del value
+
+
+class DuckPoolTest(unittest.TestCase):
+    pool: DuckPool
+    core_size: int = 4
+    max_size: int = 8
+    thread_pool: ThreadPoolExecutor
+
+    def setUp(self):
+        config = DuckPoolConfig(core_size=self.core_size, max_size=self.max_size, factory=DuckPoolFactoryTest())
+        self.pool = DuckPool(config=config)
+        self.thread_pool = ThreadPoolExecutor()
+
+    def check_in_delay(self, item: DuckPoolItem, delay):
+        time.sleep(delay)
+        self.pool.check_in(item)
+
+    def test_create_pool(self):
+        self.assertEqual(self.pool._idle_queue.qsize(), self.core_size)
+        self.assertEqual(len(self.pool._all_set), self.core_size)
+
+    def test_check_out_core(self):
+        for i in range(100):
+            item = self.pool.check_out()
+            expect = "name-{}".format(i % 4)
+            self.assertEqual(expect, item.item)
+            self.pool.check_in(item)
+
+    def test_check_out_max(self):
+        for i in range(self.max_size):
+            item = self.pool.check_out()
+            expect = "name-{}".format(i)
+            self.assertEqual(expect, item.item)
+
+        for i in range(10):
+            item = self.pool.check_out(timeout=0.01)
+            self.assertIsNone(item)
+
+    def test_check_out_delay(self):
+        for i in range(self.max_size):
+            item = self.pool.check_out()
+            expect = "name-{}".format(i)
+            self.assertEqual(expect, item.item)
+            if i == 0:
+                self.thread_pool.submit(self.check_in_delay, item, 3.0)
+
+        start = time.time()
+        item = self.pool.check_out()
+        cost = time.time() - start
+        logger.info("check_out cost {}".format(cost))
+        self.assertEqual("name-0", item.item)
+        self.assertTrue(cost > 3.0)
+
+    def tearDown(self):
+        self.pool.shutdown()
+
+
+if __name__ == '__main__':
+    unittest.main()
