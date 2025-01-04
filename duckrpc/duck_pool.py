@@ -1,10 +1,11 @@
+import queue
 from abc import ABC, abstractmethod
-from collections import deque
+from queue import Queue
 import socket
 import threading
+
 from .duck_common import DuckConn
 
-NAME_DEFAULT = ""
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
 
@@ -15,7 +16,7 @@ class DuckPoolConfig(ABC):
     max_size: int
 
     def __init__(self,
-                 name=NAME_DEFAULT,
+                 name="",
                  core_size=CORE_SIZE_DEFAULT,
                  max_size=MAX_SIZE_DEFAULT):
         self.name = name
@@ -30,7 +31,7 @@ class DuckPoolConfig(ABC):
 class DuckPool(object):
     _config: DuckPoolConfig
     _all_conn_set: set[DuckConn]
-    _idle_conn_queue: deque[DuckConn]
+    _idle_conn_queue: Queue[DuckConn]
     _lock: threading.Lock
     _wait_cond: threading.Condition
     _conn_index: int
@@ -39,18 +40,17 @@ class DuckPool(object):
     def __init__(self, config: DuckPoolConfig):
         self._config = config
         self._all_conn_set = set()
-        self._idle_conn_queue = deque()
+        self._idle_conn_queue = Queue(maxsize=self._config.max_size)
         self._conn_index = 0
         self._conn_count = 0
         self._lock = threading.Lock()
-        self._wait_cond = threading.Condition(threading.Lock())
         self._build_core_conn()
 
     def _build_core_conn(self):
         for _ in range(self._config.core_size):
             conn = self._create_conn()
             self._all_conn_set.add(conn)
-            self._idle_conn_queue.append(conn)
+            self._idle_conn_queue.put(conn)
 
     def _create_conn(self) -> DuckConn:
         sock = self._config.create_socket()
@@ -65,35 +65,26 @@ class DuckPool(object):
             self._conn_count -= 1
 
     def check_in(self, conn: DuckConn) -> None:
-        with self._wait_cond:
-            if conn in self._all_conn_set:
-                self._idle_conn_queue.append(conn)
-                self._wait_cond.notify()
+        self._idle_conn_queue.put(conn)
 
     def check_out(self, timeout=None) -> DuckConn | None:
-        """
-
-        :param timeout:
-        :return:
-        """
         if timeout is not None and isinstance(timeout, (int, float)):
             raise ValueError("timeout must be one of None,int,float")
 
+        try:
+            conn = self._idle_conn_queue.get_nowait()
+            if conn is not None:
+                return conn
+        except queue.Empty:
+            pass
+
         with self._lock:
-            if len(self._idle_conn_queue) > 0:
-                return self._idle_conn_queue.popleft()
             if self._conn_count < self._config.max_size:
                 conn = self._create_conn()
                 self._all_conn_set.add(conn)
                 return conn
 
-        return self._wait_idle_conn(timeout=timeout)
-
-    def _wait_idle_pred(self) -> bool:
-        return len(self._idle_conn_queue) > 0
-
-    def _wait_idle_conn(self, timeout=None):
-        with self._wait_cond:
-            if self._wait_cond.wait_for(predicate=self._wait_idle_pred, timeout=timeout):
-                return self._idle_conn_queue.popleft()
+        try:
+            return self._idle_conn_queue.get(timeout=timeout)
+        except queue.Empty:
             return None
