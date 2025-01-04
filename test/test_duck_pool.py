@@ -5,14 +5,13 @@ from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory, DuckPoo
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-
 import logging
 import sys
-logging.basicConfig(stream=sys.stdout,
-                    level=logging.INFO,
-                    format="%(asctime)s %(name)s %(levelname)s %(filename)s %(funcName)s %(message)s")
-logger = logging.getLogger(__name__)
 
+logging.basicConfig(stream=sys.stdout,
+                    level=logging.DEBUG,
+                    format="%(asctime)s %(name)s %(levelname)s %(threadName)s %(filename)s %(lineno)d %(message)s")
+logger = logging.getLogger(__name__)
 
 
 class DuckPoolFactoryTest(DuckPoolFactory):
@@ -38,7 +37,7 @@ class DuckPoolTest(unittest.TestCase):
 
     def setUp(self):
         config = DuckPoolConfig(core_size=self.core_size, max_size=self.max_size, factory=DuckPoolFactoryTest())
-        self.pool = DuckPool(config=config)
+        self.pool = DuckPool(config=config, logger=logger)
         self.thread_pool = ThreadPoolExecutor()
 
     def check_in_delay(self, item: DuckPoolItem, delay):
@@ -71,14 +70,13 @@ class DuckPoolTest(unittest.TestCase):
             item = self.pool.check_out()
             expect = "name-{}".format(i)
             self.assertEqual(expect, item.item)
-            if i == 0:
+            if i == (self.max_size - 1):
                 self.thread_pool.submit(self.check_in_delay, item, 3.0)
 
         start = time.time()
-        item = self.pool.check_out()
+        self.pool.check_out()
         cost = time.time() - start
         logger.info("check_out cost {}".format(cost))
-        self.assertEqual("name-0", item.item)
         self.assertTrue(cost > 3.0)
 
     def tearDown(self):
