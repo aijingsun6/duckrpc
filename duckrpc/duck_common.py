@@ -6,31 +6,15 @@ from enum import Enum
 import socket
 import threading
 
-from typing import Optional, TypeVar
-
-T = TypeVar("T")
-
-
-class DuckPoolItem(object):
-    iid: str
-    item: T
-    lock: threading.Lock
-
-    def __init__(self, item=None):
-        self.iid = str(uuid.uuid4())
-        self.item = item
-        self.lock = threading.Lock()
-
-    def __str__(self):
-        return "DuckPoolItem[iid={},item={}]".format(self.iid, self.item)
+from typing import Optional
 
 
 @dataclass
-class DuckContext(object):
+class DuckReqCtx(object):
     name: str
     local_addr: str
     local_port: int
-    unique_id: str
+    iid: str
     body_size: int
 
     def __init__(self,
@@ -47,7 +31,7 @@ class DuckContext(object):
 class DuckCoder(ABC):
 
     @abstractmethod
-    def encode_context(self, ctx: DuckContext) -> bytes:
+    def encode_context(self, ctx: DuckReqCtx) -> bytes:
         raise NotImplementedError()
 
     @abstractmethod
@@ -55,7 +39,7 @@ class DuckCoder(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def decode_context(self, data: bytes) -> DuckContext:
+    def decode_context(self, data: bytes) -> DuckReqCtx:
         raise NotImplementedError()
 
     @abstractmethod
@@ -81,13 +65,11 @@ class DuckSocketSender(object):
     def __init__(self, coder: DuckCoder):
         self.code = coder
 
-    def send(self, item: DuckPoolItem, ctx: DuckContext, body: any):
-
+    def send(self, sock: socket.socket, ctx: DuckReqCtx, body: any):
         body_bytes = self.coder.encode_body(body)
-
         ctx.body_size = len(body_bytes)
-        ctx.unique_id = str(uuid.uuid4())
-
+        ctx.iid = str(uuid.uuid4())
+        ctc_data = self.coder.encode_context(ctx)
 
 
         pass
@@ -97,7 +79,7 @@ class DuckSocketReceiver(object):
     acc_bytes: bytes
     ctx_size: int = 0
     recv_status: RecvStatus
-    ctx: Optional[DuckContext]
+    ctx: Optional[DuckReqCtx]
     coder: DuckCoder
     body: any
 

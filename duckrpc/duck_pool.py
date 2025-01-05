@@ -5,7 +5,6 @@ import threading
 import logging
 
 from typing import Optional, Union
-from .duck_common import T, DuckPoolItem
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
@@ -13,11 +12,11 @@ MAX_SIZE_DEFAULT = 16
 
 class DuckPoolFactory(ABC):
     @abstractmethod
-    def create(self) -> T:
+    def create(self) -> any:
         raise NotImplementedError()
 
     @abstractmethod
-    def destroy(self, value: T) -> None:
+    def destroy(self, value: any) -> None:
         raise NotImplementedError()
 
 
@@ -39,16 +38,16 @@ class DuckPoolConfig(object):
 
 
 class DuckPool(object):
-    _config: DuckPoolConfig
-    _all_set: set[DuckPoolItem]
-    _idle_queue: Queue[DuckPoolItem]
+    config: DuckPoolConfig
+    _all_set: set[any]
+    _idle_queue: Queue[any]
     _lock: threading.Lock
     _count: int
     _shutdown_flag: bool = False
     _logger: logging.Logger
 
     def __init__(self, config: DuckPoolConfig, logger=None):
-        self._config = config
+        self.config = config
         self._all_set = set()
         self._idle_queue = Queue()
         self._count = 0
@@ -61,18 +60,18 @@ class DuckPool(object):
             self._logger = logger
 
     def _build_core_items(self):
-        for _ in range(self._config.core_size):
+        for _ in range(self.config.core_size):
             conn = self._create_item()
             self._all_set.add(conn)
             self._idle_queue.put(conn)
 
-    def _create_item(self) -> DuckPoolItem:
-        item = DuckPoolItem(item=self._config.factory.create())
+    def _create_item(self) -> any:
+        item = self.config.factory.create()
         logging.debug("create_item {}".format(item))
         self._count += 1
         return item
 
-    def remove_item(self, item: DuckPoolItem) -> None:
+    def remove_item(self, item: any) -> None:
         if self._shutdown_flag:
             raise RuntimeError("pool has shutdown.")
         if item in self._all_set:
@@ -81,13 +80,13 @@ class DuckPool(object):
                 self._all_set.remove(item)
                 self._count -= 1
 
-    def check_in(self, item: DuckPoolItem) -> None:
+    def check_in(self, item: any) -> None:
         if self._shutdown_flag:
             raise RuntimeError("pool has shutdown.")
         logging.debug("check_in {}".format(item))
         self._idle_queue.put(item)
 
-    def check_out(self, timeout: Union[None, int, float] = None) -> Optional[DuckPoolItem]:
+    def check_out(self, timeout: Union[None, int, float] = None) -> Optional[any]:
         if self._shutdown_flag:
             raise RuntimeError("pool has shutdown.")
 
@@ -103,7 +102,7 @@ class DuckPool(object):
             pass
 
         with self._lock:
-            if self._count < self._config.max_size:
+            if self._count < self.config.max_size:
                 conn = self._create_item()
                 self._all_set.add(conn)
                 logging.debug("check_out {}".format(conn))
@@ -120,4 +119,4 @@ class DuckPool(object):
         logging.debug("shutdown...")
         self._shutdown_flag = True
         for e in self._all_set:
-            self._config.factory.destroy(e.item)
+            self.config.factory.destroy(e)

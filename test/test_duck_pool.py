@@ -1,6 +1,6 @@
 import time
 
-from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory, DuckPoolItem, T
+from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory
 
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -20,12 +20,12 @@ class DuckPoolFactoryTest(DuckPoolFactory):
     def __init__(self):
         self.index = 0
 
-    def create(self) -> T:
+    def create(self) -> str:
         r = "name-{}".format(self.index)
         self.index += 1
         return r
 
-    def destroy(self, value: T) -> None:
+    def destroy(self, value: str) -> None:
         del value
 
 
@@ -40,7 +40,7 @@ class DuckPoolTest(unittest.TestCase):
         self.pool = DuckPool(config=config, logger=logger)
         self.thread_pool = ThreadPoolExecutor()
 
-    def check_in_delay(self, item: DuckPoolItem, delay):
+    def check_in_delay(self, item: any, delay):
         time.sleep(delay)
         self.pool.check_in(item)
 
@@ -52,14 +52,14 @@ class DuckPoolTest(unittest.TestCase):
         for i in range(100):
             item = self.pool.check_out()
             expect = "name-{}".format(i % 4)
-            self.assertEqual(expect, item.item)
+            self.assertEqual(expect, item)
             self.pool.check_in(item)
 
     def test_check_out_max(self):
         for i in range(self.max_size):
             item = self.pool.check_out()
             expect = "name-{}".format(i)
-            self.assertEqual(expect, item.item)
+            self.assertEqual(expect, item)
 
         for i in range(10):
             item = self.pool.check_out(timeout=0.01)
@@ -69,7 +69,7 @@ class DuckPoolTest(unittest.TestCase):
         for i in range(self.max_size):
             item = self.pool.check_out()
             expect = "name-{}".format(i)
-            self.assertEqual(expect, item.item)
+            self.assertEqual(expect, item)
             if i == (self.max_size - 1):
                 self.thread_pool.submit(self.check_in_delay, item, 3.0)
 
@@ -77,7 +77,7 @@ class DuckPoolTest(unittest.TestCase):
         self.pool.check_out()
         cost = time.time() - start
         logger.info("check_out cost {}".format(cost))
-        self.assertTrue(cost > 3.0)
+        self.assertTrue(abs(cost-3.0) < 0.01)
 
     def tearDown(self):
         self.pool.shutdown()
