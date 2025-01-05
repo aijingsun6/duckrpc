@@ -5,51 +5,51 @@ from abc import ABC, abstractmethod
 from enum import Enum
 import socket
 import threading
+import json
 
 from typing import Optional
 
 
 @dataclass
-class DuckReqCtx(object):
+class DuckPacket(object):
     name: str
     local_addr: str
     local_port: int
     iid: str
-    body_size: int
+    body: any
 
-    def __init__(self,
-                 name=None,
-                 local_addr=None,
-                 local_port=0,
-                 body_size=0):
+    def __init__(self, name=None, local_addr=None, local_port=None, iid=None, body=None):
         self.name = name
         self.local_addr = local_addr
         self.local_port = local_port
-        self.body_size = body_size
+        self.iid = iid
+        self.body = body
 
 
 class DuckCoder(ABC):
 
     @abstractmethod
-    def encode_context(self, ctx: DuckReqCtx) -> bytes:
+    def encode_packet(self, packet: DuckPacket) -> bytes:
         raise NotImplementedError()
 
     @abstractmethod
-    def encode_body(self, body: any) -> bytes:
+    def decode_packet(self, data: bytes) -> DuckPacket:
         raise NotImplementedError()
 
-    @abstractmethod
-    def decode_context(self, data: bytes) -> DuckReqCtx:
-        raise NotImplementedError()
 
-    @abstractmethod
-    def decode_body(self, data: bytes) -> any:
-        raise NotImplementedError()
+class DefaultDuckCoder(DuckCoder):
+
+    def decode_packet(self, data: bytes) -> DuckPacket:
+        packet = DuckPacket()
+        packet.__dict__ = json.loads(data.decode(encoding="utf-8"))
+        return packet
+
+    def encode_packet(self, packet: DuckPacket) -> bytes:
+        return json.dumps(packet.__dict__).encode(encoding="utf-8")
 
 
 class RecvStatus(Enum):
     READ_HEAD = "READ_HEAD"
-    READ_CTX = "READ_CTX"
     READ_BODY = "READ_BODY"
 
 
@@ -59,77 +59,71 @@ class RecvResult(Enum):
     SOCKET_CLOSED = "SOCKET_CLOSED"
 
 
+class DuckSocketWrap(object):
+    sock: socket.socket
+    send_lock: threading.Lock = threading.Lock()
+    recv_lock: threading.Lock = threading.Lock()
+
+    def __init__(self, sock: socket.socket):
+        self.sock = sock
+
+
 class DuckSocketSender(object):
     coder: DuckCoder
 
     def __init__(self, coder: DuckCoder):
         self.code = coder
 
-    def send(self, sock: socket.socket, ctx: DuckReqCtx, body: any):
-        body_bytes = self.coder.encode_body(body)
-        ctx.body_size = len(body_bytes)
-        ctx.iid = str(uuid.uuid4())
-        ctc_data = self.coder.encode_context(ctx)
-
-
-        pass
+    def send(self, socket_wrap: DuckSocketWrap, packet: DuckPacket):
+        data = self.coder.encode_packet(packet=packet)
+        with socket_wrap.send_lock:
+            socket_wrap.sock.sendall(struct.pack("!I", len(data)))
+            socket_wrap.sock.sendall(data)
 
 
 class DuckSocketReceiver(object):
-    acc_bytes: bytes
-    ctx_size: int = 0
     recv_status: RecvStatus
-    ctx: Optional[DuckReqCtx]
+    acc_bytes: bytes = b''
+    body_size: int = 0
+    socket_wrap: DuckSocketWrap
     coder: DuckCoder
-    body: any
 
-    def __init__(self, coder: DuckCoder):
-        self.acc_bytes = b''
+    def __init__(self, socket_wrap: DuckSocketWrap, coder: DuckCoder):
         self.recv_status = RecvStatus.READ_HEAD
-        self.ctx = None
-        self.ctx_size = 0
+        self.acc_bytes = b''
+        self.socket_wrap = socket_wrap
+        self.body_size = 0
         self.coder = coder
-        self.body = None
 
-    def recv(self, sock: socket.socket) -> RecvResult:
+    def recv(self) -> tuple[RecvResult, Optional[DuckPacket]]:
 
         if self.recv_status == RecvStatus.READ_HEAD:
-            return self._recv_head(sock=sock)
-        elif self.recv_status == RecvStatus.READ_CTX:
-            return self._recv_ctx(sock=sock)
+            return self._recv_head()
         elif self.recv_status == RecvStatus.READ_BODY:
-            return self._recv_body(sock=sock)
+            return self._recv_body()
 
-    def _recv_head(self, sock: socket.socket) -> RecvResult:
-        data = sock.recv(4 - len(self.acc_bytes))
-        if len(data) == 0:
-            return RecvResult.SOCKET_CLOSED
-        self.acc_bytes += data
-        if len(self.acc_bytes) == 4:
-            self.ctx_size = struct.unpack("!I", self.acc_bytes)[0]
-            self.acc_bytes = b''
-            self.recv_status = RecvStatus.READ_CTX
-        return RecvResult.CONTINUE
+    def _recv_head(self) -> tuple[RecvResult, Optional[DuckPacket]]:
+        with self.socket_wrap.recv_lock:
+            data = self.socket_wrap.sock.recv(4 - len(self.acc_bytes))
+            if len(data) == 0:
+                return RecvResult.SOCKET_CLOSED, None
+            self.acc_bytes += data
+            if len(self.acc_bytes) == 4:
+                self.ctx_size = struct.unpack("!I", self.acc_bytes)[0]
+                self.acc_bytes = b''
+                self.recv_status = RecvStatus.READ_BODY
+            return RecvResult.CONTINUE, None
 
-    def _recv_ctx(self, sock: socket.socket) -> RecvResult:
-        data = sock.recv(self.ctx_size - len(self.acc_bytes))
-        if len(data) == 0:
-            return RecvResult.SOCKET_CLOSED
-        self.acc_bytes += data
-        if len(self.acc_bytes) == self.ctx_size:
-            self.ctx = self.coder.decode_context(self.acc_bytes)
-            self.acc_bytes = b''
-            self.recv_status = RecvStatus.READ_BODY
-        return RecvResult.CONTINUE
+    def _recv_body(self) -> tuple[RecvResult, Optional[DuckPacket]]:
+        with self.socket_wrap.recv_lock:
+            data = self.socket_wrap.sock.recv(self.body_size - len(self.acc_bytes))
+            if len(data) == 0:
+                return RecvResult.SOCKET_CLOSED, None
+            self.acc_bytes += data
+            if len(self.acc_bytes) == self.body_size:
+                packet = self.coder.decode_packet(self.acc_bytes)
+                self.recv_status = RecvStatus.READ_HEAD
+                self.acc_bytes = b''
+                return RecvResult.COMPLETE, packet
 
-    def _recv_body(self, sock: socket.socket) -> RecvResult:
-        data = sock.recv(self.ctx.body_size - len(self.acc_bytes))
-        if len(data) == 0:
-            return RecvResult.SOCKET_CLOSED
-        self.acc_bytes += data
-        if len(self.acc_bytes) == self.ctx.body_size:
-            self.recv_status = RecvStatus.READ_HEAD
-            self.acc_bytes = b''
-            self.body = self.coder.decode_body(self.acc_bytes)
-            return RecvResult.COMPLETE
-        return RecvResult.CONTINUE
+            return RecvResult.CONTINUE, None
