@@ -1,3 +1,4 @@
+import queue
 import selectors
 import socket
 import os
@@ -8,11 +9,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from .duck_pool import DuckPool, DuckPoolFactory, DuckPoolConfig
-from .duck_common import DuckSocketWrap, DuckCoder, DuckSocketReceiver, DuckSocketSender, DuckPacket
+from .duck_common import DuckSocketWrap, DuckCoder, DuckSocketReceiver, DuckSocketSender, DuckPacket, RecvResult
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
-READ_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+RECV_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 TIMEOUT_INTERVAL_DEFAULT = 60
 TIMEOUT_DEFAULT = 600
 
@@ -50,6 +52,7 @@ class DuckRpcClientConfig(object):
     core_conn_size: int
     max_conn_size: int
     recv_thread_size: int
+    dispatch_thread_size: int
     timeout_interval: int
     timeout_default: int
     local_addr: str
@@ -71,6 +74,7 @@ class DuckRpcClient(SocketFactory):
     _shutdown_flag: bool = False
     _select_thread_pool: ThreadPoolExecutor
     _recv_thread_pool: ThreadPoolExecutor
+    _dispatch_thread_pool: ThreadPoolExecutor
     _timeout_thread_pool: ThreadPoolExecutor
     _reply_map: dict[str, ReplyItem] = dict()
     _timeout_heapq: list[TimeoutItem] = []
@@ -80,8 +84,10 @@ class DuckRpcClient(SocketFactory):
                  factory: SocketFactory = None,
                  coder=None):
         self.config = config
-        if self.config.read_thread_size is None:
-            self.config.read_thread_size = READ_THREAD_SIZE_DEFAULT
+        if self.config.recv_thread_size is None:
+            self.config.read_thread_size = RECV_THREAD_SIZE_DEFAULT
+        if self.config.dispatch_thread_size is None:
+            self.config.dispatch_thread_size = DISPATCH_THREAD_SIZE_DEFAULT
         if self.config.timeout_default is None:
             self.config.timeout_default = TIMEOUT_DEFAULT
         if self.config.timeout_interval is None:
@@ -106,9 +112,26 @@ class DuckRpcClient(SocketFactory):
     def _select_loop(self):
         while not self._shutdown_flag:
             events = self.selector.select()
+            socket_receiver_queue = queue.Queue()
             for key, mask in events:
-                callback = key.data
-                callback(key.fileobj, mask)
+                socket_receiver: DuckSocketReceiver = key.data
+                socket_receiver_queue.put(socket_receiver)
+                self._recv_thread_pool.submit(self._recv_sock, socket_receiver_queue)
+            socket_receiver_queue.join()
+
+    def _recv_sock(self, q: queue.Queue[DuckSocketReceiver]):
+        socket_receiver: DuckSocketReceiver = q.get()
+        res, packet = socket_receiver.recv()
+        if res == RecvResult.SOCKET_CLOSED:
+            socket_receiver.socket_wrap.sock.close()
+            self.pool.remove_item(socket_receiver.socket_wrap)
+
+        if packet is not None:
+            self._dispatch_thread_pool.submit(self._dispatch_packet, packet)
+        q.task_done()
+
+    def _dispatch_packet(self, packet: DuckPacket):
+        pass
 
     def _timeout_loop(self):
         while not self._shutdown_flag:
@@ -120,7 +143,6 @@ class DuckRpcClient(SocketFactory):
             sleep = max(0, self.config.timeout_interval - cost)
             if sleep > 0:
                 time.sleep(sleep)
-
 
     def create(self) -> DuckSocketWrap:
         sock = self.factory.create()
@@ -142,17 +164,19 @@ class DuckRpcClient(SocketFactory):
         socket_wrap = self.pool.check_out(timeout=timeout)
         packet = self._build_packet(body=body)
         self.sender.send(socket_wrap=socket_wrap, packet=packet)
+        self.pool.check_in(socket_wrap)
 
         reply_item = ReplyItem(iid=packet.iid)
         self._reply_map[packet.iid] = reply_item
         timeout = timeout - time.time() + start
 
         def pred():
-            return reply_item.reply is not None
+            return reply_item.reply
 
-        reply_item.cond.wait_for(predicate=pred, timeout=timeout)
+        with reply_item.cond:
+            reply = reply_item.cond.wait_for(predicate=pred, timeout=timeout)
         del self._reply_map[packet.iid]
-        return reply_item.reply
+        return reply
 
     def _build_packet(self, body: any) -> DuckPacket:
         return DuckPacket(name=self.config.name,
@@ -162,4 +186,13 @@ class DuckRpcClient(SocketFactory):
                           body=body)
 
     def shutdown(self):
-        pass
+        self._shutdown_flag = True
+        self.pool.shutdown()
+        self.selector.close()
+        self._select_thread_pool.shutdown()
+        self._timeout_thread_pool.shutdown()
+        self._recv_thread_pool.shutdown()
+        self._dispatch_thread_pool.shutdown()
+
+
+

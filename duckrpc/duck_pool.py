@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from queue import Queue
 import threading
 import logging
-
+import time
 from typing import Optional, Union
 
 CORE_SIZE_DEFAULT = 8
@@ -79,6 +79,7 @@ class DuckPool(object):
                 logging.debug("remote_item {}".format(item))
                 self._all_set.remove(item)
                 self._count -= 1
+                self.config.factory.destroy(item)
 
     def check_in(self, item: any) -> None:
         if self._shutdown_flag:
@@ -95,7 +96,7 @@ class DuckPool(object):
 
         try:
             conn = self._idle_queue.get_nowait()
-            if conn is not None:
+            if conn in self._all_set:
                 logging.debug("check_out {}".format(conn))
                 return conn
         except queue.Empty:
@@ -107,12 +108,19 @@ class DuckPool(object):
                 self._all_set.add(conn)
                 logging.debug("check_out {}".format(conn))
                 return conn
-        try:
-            item = self._idle_queue.get(timeout=timeout)
-            logging.debug("check_out {}".format(item))
-            return item
-        except:
-            raise
+        timeout_at = None
+        if timeout is not None:
+            timeout_at = time.time() + timeout
+        while True:
+            try:
+                if timeout_at is not None:
+                    timeout = timeout_at - time.time()
+                item = self._idle_queue.get(timeout=timeout)
+                if item in self._all_set:
+                    logging.debug("check_out {}".format(item))
+                    return item
+            except:
+                raise
 
     def shutdown(self):
         logging.debug("shutdown...")
