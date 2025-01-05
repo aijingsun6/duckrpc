@@ -1,3 +1,4 @@
+import queue
 import time
 
 from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory
@@ -62,8 +63,8 @@ class DuckPoolTest(unittest.TestCase):
             self.assertEqual(expect, item)
 
         for i in range(10):
-            item = self.pool.check_out(timeout=0.01)
-            self.assertIsNone(item)
+            with self.assertRaises(queue.Empty):
+                item = self.pool.check_out(timeout=0.01)
 
     def test_check_out_delay(self):
         for i in range(self.max_size):

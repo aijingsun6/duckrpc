@@ -107,13 +107,12 @@ class DuckPool(object):
                 self._all_set.add(conn)
                 logging.debug("check_out {}".format(conn))
                 return conn
-        item = None
         try:
             item = self._idle_queue.get(timeout=timeout)
-        except queue.Empty:
-            pass
-        logging.debug("check_out {}".format(item))
-        return item
+            logging.debug("check_out {}".format(item))
+            return item
+        except:
+            raise
 
     def shutdown(self):
         logging.debug("shutdown...")
