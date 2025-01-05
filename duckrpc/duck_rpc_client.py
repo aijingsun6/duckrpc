@@ -131,7 +131,12 @@ class DuckRpcClient(SocketFactory):
         q.task_done()
 
     def _dispatch_packet(self, packet: DuckPacket):
-        pass
+        iid = packet.iid
+        if iid in self._reply_map:
+            reply_item = self._reply_map[iid]
+            with reply_item.cond:
+                reply_item.reply = packet.body
+                reply_item.cond.notify()
 
     def _timeout_loop(self):
         while not self._shutdown_flag:
