@@ -5,6 +5,7 @@ from enum import Enum
 import socket
 import threading
 import json
+import selectors
 
 from typing import Optional
 
@@ -24,6 +25,7 @@ class DuckPacket(object):
         self.iid = iid
         self.body = body
 
+
 class DuckFactory(ABC):
     @abstractmethod
     def create(self) -> any:
@@ -33,6 +35,7 @@ class DuckFactory(ABC):
     def destroy(self, value: any) -> None:
         raise NotImplementedError()
 
+
 class DuckSocketFactory(DuckFactory):
 
     def create(self) -> socket.socket:
@@ -40,6 +43,7 @@ class DuckSocketFactory(DuckFactory):
 
     def destroy(self, value: socket.socket) -> None:
         pass
+
 
 class DuckCoder(ABC):
 
@@ -76,11 +80,29 @@ class RecvResult(Enum):
 
 class DuckSocketWrap(object):
     sock: socket.socket
-    send_lock: threading.Lock = threading.Lock()
-    recv_lock: threading.Lock = threading.Lock()
+    write_lock: threading.Lock = threading.Lock()
+    read_lock: threading.Lock = threading.Lock()
 
     def __init__(self, sock: socket.socket):
         self.sock = sock
+
+
+class DuckSocketAccepter(object):
+    socket_wrap: DuckSocketWrap
+    selector: selectors.DefaultSelector
+    coder: DuckCoder
+
+    def __init__(self, socket_wrap: DuckSocketWrap, selector: selectors.DefaultSelector, coder: DuckCoder):
+        self.socket_wrap = socket_wrap
+        self.selector = selector
+        self.coder = coder
+
+    def accept(self):
+        with self.socket_wrap.read_lock:
+            conn, addr = self.socket_wrap.sock.accept()  # 应当已就绪
+            conn.setblocking(False)
+            socket_receiver = DuckSocketReceiver(socket_wrap=DuckSocketWrap(sock=conn), coder=self.coder)
+            self.selector.register(conn, selectors.EVENT_READ, socket_receiver)
 
 
 class DuckSocketSender(object):
@@ -91,7 +113,7 @@ class DuckSocketSender(object):
 
     def send(self, socket_wrap: DuckSocketWrap, packet: DuckPacket):
         data = self.coder.encode_packet(packet=packet)
-        with socket_wrap.send_lock:
+        with socket_wrap.write_lock:
             socket_wrap.sock.sendall(struct.pack("!I", len(data)))
             socket_wrap.sock.sendall(data)
 
@@ -118,7 +140,7 @@ class DuckSocketReceiver(object):
             return self._recv_body()
 
     def _recv_head(self) -> tuple[RecvResult, Optional[DuckPacket]]:
-        with self.socket_wrap.recv_lock:
+        with self.socket_wrap.read_lock:
             data = self.socket_wrap.sock.recv(4 - len(self.acc_bytes))
             if len(data) == 0:
                 return RecvResult.SOCKET_CLOSED, None
@@ -130,7 +152,7 @@ class DuckSocketReceiver(object):
             return RecvResult.CONTINUE, None
 
     def _recv_body(self) -> tuple[RecvResult, Optional[DuckPacket]]:
-        with self.socket_wrap.recv_lock:
+        with self.socket_wrap.read_lock:
             data = self.socket_wrap.sock.recv(self.body_size - len(self.acc_bytes))
             if len(data) == 0:
                 return RecvResult.SOCKET_CLOSED, None
