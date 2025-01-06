@@ -3,6 +3,7 @@ import selectors
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import queue
+import logging
 from abc import ABC, abstractmethod
 
 from .duck_common import DuckSocketFactory, DuckCoder, DuckPacket, DuckSocketAccepter, DuckSocketSender, \
@@ -17,14 +18,9 @@ class DuckRpcServerConfig(object):
     name: str
     recv_thread_size: int
     dispatch_thread_size: int
-    timeout_interval: int
-    timeout_default: int
     bind_addr: str
     bind_port: int
     backlog: int
-
-    def __init__(self):
-        pass
 
 
 class DuckRpcHandler(ABC):
@@ -39,6 +35,7 @@ class DuckRpcServer(object):
     factory: DuckSocketFactory
     coder: DuckCoder
     handler: DuckRpcHandler
+    logger: logging.Logger
     sender: DuckSocketSender
     accept_selector = selectors.DefaultSelector()
     read_selector = selectors.DefaultSelector()
@@ -52,13 +49,21 @@ class DuckRpcServer(object):
     def __init__(self, config: DuckRpcServerConfig,
                  factory: DuckSocketFactory,
                  coder: DuckCoder,
-                 handler: DuckRpcHandler):
+                 handler: DuckRpcHandler,
+                 logger: logging.Logger=None):
         self.config = config
         self.factory = factory
         self.coder = coder
         self.handler = handler
+        self.logger = logger
+        if self.logger is None:
+            self.logger = logging.getLogger(__name__)
         self.sender = DuckSocketSender(coder=coder)
         self._shutdown_flag = False
+        if self.config.recv_thread_size is None or self.config.recv_thread_size < 1:
+            self.config.recv_thread_size = RECV_THREAD_SIZE_DEFAULT
+        if self.config.dispatch_thread_size is None or self.config.dispatch_thread_size < 1:
+            self.config.dispatch_thread_size = DISPATCH_THREAD_SIZE_DEFAULT
         self._accept_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-accept-".format(self.config.name),
                                                       max_workers=1)
         self._read_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-read-".format(self.config.name),
@@ -70,14 +75,14 @@ class DuckRpcServer(object):
 
     def accept(self):
         while not self._shutdown_flag:
-            events = self.accept_selector.select()
+            events = self.accept_selector.select(timeout=1)
             for key, _mask in events:
                 accpter: DuckSocketAccepter = key.data
                 accpter.accept()
 
     def read(self):
         while not self._shutdown_flag:
-            events = self.read_selector.select()
+            events = self.read_selector.select(timeout=1)
             socket_receiver_queue = queue.Queue()
             for key, _mask in events:
                 socket_receiver: DuckSocketReceiver = key.data
@@ -101,12 +106,22 @@ class DuckRpcServer(object):
 
     def start(self) -> None:
         sock = self.factory.create()
-        sock.bind((self.config.bind_addr, self.config.bind_port))
+        bind_tuple = (self.config.bind_addr, self.config.bind_port)
+        sock.bind(bind_tuple)
+        logging.info("start rpc server, sock={}, bind={}".format(sock, bind_tuple))
         sock.listen(self.config.backlog)
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
-        accepter: DuckSocketAccepter = DuckSocketAccepter(socket_wrap=socket_wrap, selector=self.read_selector,
+        accepter: DuckSocketAccepter = DuckSocketAccepter(socket_wrap=socket_wrap,
+                                                          selector=self.read_selector,
                                                           coder=self.coder)
         self.accept_selector.register(sock, selectors.EVENT_READ, accepter)
         self._accept_thread_pool.submit(self.accept)
         self._read_thread_pool.submit(self.read)
+
+    def shutdown(self):
+        self._shutdown_flag = True
+        self._accept_thread_pool.shutdown()
+        self._read_thread_pool.shutdown()
+        self._recv_thread_pool.shutdown()
+        self._dispatch_thread_pool.shutdown()

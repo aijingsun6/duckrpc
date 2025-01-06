@@ -36,13 +36,15 @@ class DuckFactory(ABC):
         raise NotImplementedError()
 
 
-class DuckSocketFactory(DuckFactory):
+class DuckSocketFactory(DuckFactory, ABC):
 
+    @abstractmethod
     def create(self) -> socket.socket:
-        pass
+        raise NotImplementedError()
 
+    @abstractmethod
     def destroy(self, value: socket.socket) -> None:
-        pass
+        raise NotImplementedError()
 
 
 class DuckCoder(ABC):
