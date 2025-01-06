@@ -1,6 +1,5 @@
 import queue
 import selectors
-import socket
 import os
 import threading
 import heapq
@@ -8,8 +7,8 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from .duck_pool import DuckPool, DuckPoolFactory, DuckPoolConfig
-from .duck_common import DuckSocketWrap, DuckCoder, DuckSocketReceiver, DuckSocketSender, DuckPacket, RecvResult
+from .duck_pool import DuckPool, DuckPoolConfig
+from .duck_common import DuckSocketFactory, DuckSocketWrap, DuckCoder, DuckSocketReceiver, DuckSocketSender, DuckPacket, RecvResult
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
@@ -17,16 +16,6 @@ RECV_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 TIMEOUT_INTERVAL_DEFAULT = 60
 TIMEOUT_DEFAULT = 600
-
-
-class SocketFactory(DuckPoolFactory):
-
-    def create(self) -> socket.socket:
-        pass
-
-    def destroy(self, value: socket.socket) -> None:
-        pass
-
 
 @dataclass(order=True)
 class TimeoutItem(object):
@@ -64,9 +53,9 @@ class DuckRpcClientConfig(object):
         pass
 
 
-class DuckRpcClient(SocketFactory):
+class DuckRpcClient(DuckSocketFactory):
     config: DuckRpcClientConfig
-    factory: SocketFactory
+    factory: DuckSocketFactory
     pool: DuckPool
     coder: DuckCoder
     selector = selectors.DefaultSelector()
@@ -81,7 +70,7 @@ class DuckRpcClient(SocketFactory):
 
     def __init__(self,
                  config: DuckRpcClientConfig = None,
-                 factory: SocketFactory = None,
+                 factory: DuckSocketFactory = None,
                  coder=None):
         self.config = config
         if self.config.recv_thread_size is None:

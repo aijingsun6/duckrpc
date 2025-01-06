@@ -1,30 +1,20 @@
 import queue
-from abc import ABC, abstractmethod
 from queue import Queue
 import threading
 import logging
 import time
 from typing import Optional, Union
+from .duck_common import DuckFactory
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
-
-
-class DuckPoolFactory(ABC):
-    @abstractmethod
-    def create(self) -> any:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def destroy(self, value: any) -> None:
-        raise NotImplementedError()
 
 
 class DuckPoolConfig(object):
     name: str
     core_size: int
     max_size: int
-    factory: DuckPoolFactory
+    factory: DuckFactory
 
     def __init__(self,
                  name="",

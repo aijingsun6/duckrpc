@@ -1,7 +1,8 @@
 import queue
 import time
 
-from duckrpc.duck_pool import DuckPool, DuckPoolConfig, DuckPoolFactory
+from duckrpc.duck_common import DuckFactory
+from duckrpc.duck_pool import DuckPool, DuckPoolConfig
 
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +16,7 @@ logging.basicConfig(stream=sys.stdout,
 logger = logging.getLogger(__name__)
 
 
-class DuckPoolFactoryTest(DuckPoolFactory):
+class DuckPoolFactoryTest(DuckFactory):
     index = 0
 
     def __init__(self):

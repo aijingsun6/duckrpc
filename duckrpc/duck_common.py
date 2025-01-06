@@ -1,5 +1,4 @@
 import struct
-import uuid
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -25,6 +24,22 @@ class DuckPacket(object):
         self.iid = iid
         self.body = body
 
+class DuckFactory(ABC):
+    @abstractmethod
+    def create(self) -> any:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def destroy(self, value: any) -> None:
+        raise NotImplementedError()
+
+class DuckSocketFactory(DuckFactory):
+
+    def create(self) -> socket.socket:
+        pass
+
+    def destroy(self, value: socket.socket) -> None:
+        pass
 
 class DuckCoder(ABC):
 
