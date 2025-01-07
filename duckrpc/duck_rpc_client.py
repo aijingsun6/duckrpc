@@ -49,9 +49,6 @@ class DuckRpcClientConfig(object):
     remote_addr: str
     remote_port: int
 
-    def __init__(self):
-        pass
-
 
 class DuckRpcClient(DuckSocketFactory):
     config: DuckRpcClientConfig
@@ -86,7 +83,6 @@ class DuckRpcClient(DuckSocketFactory):
                                      core_size=self.config.core_conn_size,
                                      max_size=self.config.max_conn_size,
                                      factory=self)
-        self.pool = DuckPool(config=pool_config)
         self.coder = coder
         self.sender = DuckSocketSender(coder=coder)
         self._select_thread_pool = ThreadPoolExecutor(thread_name_prefix=self.config.name + "-selector-",
@@ -95,12 +91,15 @@ class DuckRpcClient(DuckSocketFactory):
                                                        max_workers=1)
         self._recv_thread_pool = ThreadPoolExecutor(thread_name_prefix=self.config.name + "-read-",
                                                     max_workers=self.config.recv_thread_size)
+        self._dispatch_thread_pool = ThreadPoolExecutor(thread_name_prefix=self.config.name + "-dispatch-",
+                                                        max_workers=self.config.dispatch_thread_size)
         self._select_thread_pool.submit(self._select_loop)
         self._timeout_thread_pool.submit(self._timeout_loop)
+        self.pool = DuckPool(config=pool_config)
 
     def _select_loop(self):
         while not self._shutdown_flag:
-            events = self.selector.select()
+            events = self.selector.select(timeout=5)
             socket_receiver_queue = queue.Queue()
             for key, mask in events:
                 socket_receiver: DuckSocketReceiver = key.data
@@ -140,8 +139,8 @@ class DuckRpcClient(DuckSocketFactory):
 
     def create(self) -> DuckSocketWrap:
         sock = self.factory.create()
-        sock.setblocking(False)
         sock.connect((self.config.remote_addr, self.config.remote_port))
+        sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_receiver = DuckSocketReceiver(socket_wrap=socket_wrap, coder=self.coder)
         self.selector.register(sock, selectors.EVENT_READ, socket_receiver)
