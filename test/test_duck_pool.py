@@ -1,7 +1,7 @@
 import queue
 import time
 
-from duckrpc.duck_common import DuckFactory
+from duckrpc.duck_factory import DuckFactory
 from duckrpc.duck_pool import DuckPool, DuckPoolConfig
 
 import unittest
@@ -38,8 +38,8 @@ class DuckPoolTest(unittest.TestCase):
     thread_pool: ThreadPoolExecutor
 
     def setUp(self):
-        config = DuckPoolConfig(core_size=self.core_size, max_size=self.max_size, factory=DuckPoolFactoryTest())
-        self.pool = DuckPool(config=config, logger=logger)
+        config = DuckPoolConfig(core_size=self.core_size, max_size=self.max_size)
+        self.pool = DuckPool(config=config, factory=DuckPoolFactoryTest(), logger=logger)
         self.thread_pool = ThreadPoolExecutor()
 
     def check_in_delay(self, item: any, delay):

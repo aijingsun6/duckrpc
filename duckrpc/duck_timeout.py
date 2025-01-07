@@ -23,7 +23,7 @@ class TimeoutHandler(ABC):
         raise NotImplementedError()
 
 
-class DuckTimeout(object):
+class DuckTimeoutMgr(object):
     name: str
     timeout_interval: int
     handler: TimeoutHandler

@@ -4,7 +4,7 @@ import threading
 import logging
 import time
 from typing import Optional, Union
-from .duck_common import DuckFactory
+from .duck_factory import DuckFactory
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
@@ -14,40 +14,39 @@ class DuckPoolConfig(object):
     name: str
     core_size: int
     max_size: int
-    factory: DuckFactory
 
     def __init__(self,
                  name="",
                  core_size=CORE_SIZE_DEFAULT,
-                 max_size=MAX_SIZE_DEFAULT,
-                 factory=None):
+                 max_size=MAX_SIZE_DEFAULT):
         self.name = name
         self.core_size = core_size
         self.max_size = max_size
-        self.factory = factory
 
 
 class DuckPool(object):
     config: DuckPoolConfig
+    factory: DuckFactory
+    logger: logging.Logger
     _all_set: set[any]
     _idle_queue: Queue[any]
     _lock: threading.Lock
     _count: int
     _shutdown_flag: bool = False
-    _logger: logging.Logger
 
-    def __init__(self, config: DuckPoolConfig, logger=None):
+    def __init__(self, config: DuckPoolConfig, factory: DuckFactory, logger=None):
         self.config = config
+        self.factory = factory
+        if logger is None:
+            self.logger = logging.getLogger(__name__)
+        else:
+            self.logger = logger
         self._all_set = set()
         self._idle_queue = Queue()
         self._count = 0
         self._lock = threading.Lock()
         self._build_core_items()
         self._shutdown_flag = False
-        if logger is None:
-            self._logger = logging.getLogger(__name__)
-        else:
-            self._logger = logger
 
     def _build_core_items(self):
         for _ in range(self.config.core_size):
@@ -56,7 +55,7 @@ class DuckPool(object):
             self._idle_queue.put(conn)
 
     def _create_item(self) -> any:
-        item = self.config.factory.create()
+        item = self.factory.create()
         logging.debug("create_item {}".format(item))
         self._count += 1
         return item
@@ -69,7 +68,7 @@ class DuckPool(object):
                 logging.debug("remote_item {}".format(item))
                 self._all_set.remove(item)
                 self._count -= 1
-                self.config.factory.destroy(item)
+                self.factory.destroy(item)
 
     def check_in(self, item: any) -> None:
         if self._shutdown_flag:
@@ -116,4 +115,4 @@ class DuckPool(object):
         logging.debug("shutdown...")
         self._shutdown_flag = True
         for e in self._all_set:
-            self.config.factory.destroy(e)
+            self.factory.destroy(e)
