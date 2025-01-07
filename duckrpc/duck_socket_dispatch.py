@@ -68,3 +68,7 @@ class DuckSocketDispatch(object):
             self.logger.debug(f"dispatch packet {packet}")
             self._dispatch_executor.submit(self.dispatch_handler.dispatch_packet, recv, packet)
         q.task_done()
+
+    def shutdown(self):
+        self._decode_executor.shutdown()
+        self._dispatch_executor.shutdown()

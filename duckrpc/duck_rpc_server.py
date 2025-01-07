@@ -61,9 +61,9 @@ class DuckRpcServer(DispatchHandler):
     coder: DuckCoder
     handler: DuckRpcBodyHandler
     logger: logging.Logger
-    sender: DuckSocketSender
-    accept_selector = selectors.DefaultSelector()
-    read_selector = selectors.DefaultSelector()
+    _sender: DuckSocketSender
+    _accept_selector = selectors.DefaultSelector()
+    _read_selector = selectors.DefaultSelector()
     _shutdown_flag: bool = False
     _accept_executor: ThreadPoolExecutor
     _read_executor: ThreadPoolExecutor
@@ -83,7 +83,7 @@ class DuckRpcServer(DispatchHandler):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self.sender = DuckSocketSender(coder=coder)
+        self._sender = DuckSocketSender(coder=coder)
 
         self._shutdown_flag = False
         self._accept_executor = ThreadPoolExecutor(thread_name_prefix="{}-accept-".format(self.config.name),
@@ -98,14 +98,14 @@ class DuckRpcServer(DispatchHandler):
 
     def accept_loop(self):
         while not self._shutdown_flag:
-            events = self.accept_selector.select(timeout=self.config.accept_select_timeout)
+            events = self._accept_selector.select(timeout=self.config.accept_select_timeout)
             for key, _mask in events:
                 socket_accept: DuckSocketAccept = key.data
                 socket_accept.accept()
 
     def read_loop(self):
         while not self._shutdown_flag:
-            events = self.read_selector.select(timeout=self.config.read_select_timeout)
+            events = self._read_selector.select(timeout=self.config.read_select_timeout)
             acc: list[DuckSocketReceiver] = []
             for key, _mask in events:
                 acc.append(key.data)
@@ -120,22 +120,23 @@ class DuckRpcServer(DispatchHandler):
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
-                                                           selector=self.read_selector,
+                                                           selector=self._read_selector,
                                                            coder=self.coder,
                                                            logger=self.logger)
-        self.accept_selector.register(sock, selectors.EVENT_READ, socket_accept)
+        self._accept_selector.register(sock, selectors.EVENT_READ, socket_accept)
         self._accept_executor.submit(self.accept_loop)
         self._read_executor.submit(self.read_loop)
 
     def dispatch_packet(self, recv: DuckSocketReceiver, packet: DuckPacket) -> None:
         result = self.handler.handle_body(packet.body)
         packet.body = result
-        self.sender.send(recv.socket_wrap, packet=packet)
+        self._sender.send(recv.socket_wrap, packet=packet)
 
     def dispatch_socket_close(self, recv: DuckSocketReceiver):
-        self.read_selector.unregister(recv.socket_wrap.sock)
+        self._read_selector.unregister(recv.socket_wrap.sock)
 
     def shutdown(self):
         self._shutdown_flag = True
         self._accept_executor.shutdown()
         self._read_executor.shutdown()
+        self._dispatcher.shutdown()
