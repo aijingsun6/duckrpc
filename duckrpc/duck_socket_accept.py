@@ -6,7 +6,7 @@ from .duck_coder import DuckCoder
 from .duck_socket_recv import DuckSocketReceiver
 
 
-class DuckSocketAccepter(object):
+class DuckSocketAccept(object):
     socket_wrap: DuckSocketWrap
     selector: selectors.DefaultSelector
     coder: DuckCoder
