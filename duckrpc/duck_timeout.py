@@ -4,8 +4,10 @@ from abc import ABC, abstractmethod
 import logging
 import time
 import heapq
+import os
 
 TIMEOUT_INTERVAL_DEFAULT = 60
+DISPATCH_THREAD_POOL_SIZE = min(32, (os.cpu_count() or 1) + 4)
 
 
 @dataclass(order=True)
@@ -17,16 +19,17 @@ class TimeoutItem(object):
 class TimeoutHandler(ABC):
 
     @abstractmethod
-    def handle_timeout_item(self, item: TimeoutItem):
+    def handle_timeout(self, item: TimeoutItem):
         raise NotImplementedError()
 
 
 class DuckTimeout(object):
     name: str
-    executor: ThreadPoolExecutor
     timeout_interval: int
     handler: TimeoutHandler
     logger: logging.Logger
+    _loop_executor: ThreadPoolExecutor
+    _dispatch_executor: ThreadPoolExecutor
     _shutdown_flag: bool = False
     _heapq: list[TimeoutItem] = []
 
@@ -34,16 +37,20 @@ class DuckTimeout(object):
                  name="",
                  timeout_interval=TIMEOUT_INTERVAL_DEFAULT,
                  handler: TimeoutHandler = TimeoutHandler(),
+                 dispatch_thread_size=DISPATCH_THREAD_POOL_SIZE,
                  logger=None):
         self.name = name
-        self.executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout-", max_workers=1)
         self.timeout_interval = timeout_interval
         self.handler = handler
         if logger is None:
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self.executor.submit(self._timeout_loop)
+        self._loop_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout-",
+                                                 max_workers=1)
+        self._dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout-dispatch",
+                                                     max_workers=dispatch_thread_size)
+        self._loop_executor.submit(self._timeout_loop)
 
     def _timeout_loop(self):
         while not self._shutdown_flag:
@@ -51,7 +58,7 @@ class DuckTimeout(object):
             while self._heapq and heapq.nsmallest(1, self._heapq)[0].timeout_at > start:
                 item = heapq.heappop(self._heapq)
                 self.logger.debug(f"handle timeout item {item}")
-                self.handler.handle_timeout_item(item)
+                self._dispatch_executor.submit(self.handler.handle_timeout, item)
             cost = int(time.time()) - start
             sleep = max(0, self.timeout_interval - cost)
             if sleep > 0:
@@ -65,4 +72,5 @@ class DuckTimeout(object):
 
     def shutdown(self):
         self._shutdown_flag = True
-        self.executor.shutdown()
+        self._loop_executor.shutdown()
+        self._dispatch_executor.shutdown()
