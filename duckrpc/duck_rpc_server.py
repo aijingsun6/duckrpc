@@ -2,107 +2,114 @@ import os
 import selectors
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
-import queue
 import logging
 from abc import ABC, abstractmethod
 
-from .duck_common import DuckSocketFactory, DuckCoder, DuckPacket, DuckSocketAccepter, DuckSocketSender, \
-    DuckSocketReceiver, DuckSocketWrap, RecvResult
+from .duck_packet import DuckPacket
+from .duck_socket_recv import DuckSocketReceiver
+from .duck_socket_wrap import DuckSocketWrap
+from .duck_socket_accept import DuckSocketAccept
+from .duck_factory import DuckSocketFactory
+from .duck_coder import DuckCoder
+from .duck_socket_send import DuckSocketSender
+from .duck_socket_dispatch import DuckSocketDispatch, DispatchHandler
 
-RECV_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+DECODE_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 
 
 @dataclass
 class DuckRpcServerConfig(object):
     name: str
-    recv_thread_size: int
+    decode_thread_size: int
     dispatch_thread_size: int
     bind_addr: str
     bind_port: int
     backlog: int
+    accept_select_timeout: int
+    read_select_timeout: int
+
+    def __init__(self,
+                 name="",
+                 decode_thread_size=DECODE_THREAD_SIZE_DEFAULT,
+                 dispatch_thread_size=DISPATCH_THREAD_SIZE_DEFAULT,
+                 bind_addr="127.0.0.1",
+                 bind_port=18080,
+                 backlog=100,
+                 accept_select_timeout=5,
+                 read_select_timeout=5):
+        self.name = name
+        self.decode_thread_size = decode_thread_size
+        self.dispatch_thread_size = dispatch_thread_size
+        self.bind_addr = bind_addr
+        self.bind_port = bind_port
+        self.backlog = backlog
+        self.accept_select_timeout = accept_select_timeout
+        self.read_select_timeout = read_select_timeout
 
 
-class DuckRpcHandler(ABC):
+class DuckRpcBodyHandler(ABC):
 
     @abstractmethod
-    def handle(self, body: any) -> any:
+    def handle_body(self, body: any) -> any:
         raise NotImplementedError()
 
 
-class DuckRpcServer(object):
+class DuckRpcServer(DispatchHandler):
     config: DuckRpcServerConfig
     factory: DuckSocketFactory
     coder: DuckCoder
-    handler: DuckRpcHandler
+    handler: DuckRpcBodyHandler
     logger: logging.Logger
     sender: DuckSocketSender
     accept_selector = selectors.DefaultSelector()
     read_selector = selectors.DefaultSelector()
-    sender: DuckSocketSender
     _shutdown_flag: bool = False
-    _accept_thread_pool: ThreadPoolExecutor
-    _read_thread_pool: ThreadPoolExecutor
-    _recv_thread_pool: ThreadPoolExecutor
-    _dispatch_thread_pool: ThreadPoolExecutor
+    _accept_executor: ThreadPoolExecutor
+    _read_executor: ThreadPoolExecutor
+    _dispatcher: DuckSocketDispatch
 
-    def __init__(self, config: DuckRpcServerConfig,
+    def __init__(self,
+                 config: DuckRpcServerConfig,
                  factory: DuckSocketFactory,
                  coder: DuckCoder,
-                 handler: DuckRpcHandler,
-                 logger: logging.Logger=None):
+                 handler: DuckRpcBodyHandler,
+                 logger: logging.Logger):
         self.config = config
         self.factory = factory
         self.coder = coder
         self.handler = handler
-        self.logger = logger
         if self.logger is None:
             self.logger = logging.getLogger(__name__)
+        else:
+            self.logger = logger
         self.sender = DuckSocketSender(coder=coder)
+
         self._shutdown_flag = False
-        if self.config.recv_thread_size is None or self.config.recv_thread_size < 1:
-            self.config.recv_thread_size = RECV_THREAD_SIZE_DEFAULT
-        if self.config.dispatch_thread_size is None or self.config.dispatch_thread_size < 1:
-            self.config.dispatch_thread_size = DISPATCH_THREAD_SIZE_DEFAULT
-        self._accept_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-accept-".format(self.config.name),
-                                                      max_workers=1)
-        self._read_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-read-".format(self.config.name),
-                                                    max_workers=1)
-        self._recv_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-recv-".format(self.config.name),
-                                                    max_workers=self.config.recv_thread_size)
-        self._dispatch_thread_pool = ThreadPoolExecutor(thread_name_prefix="{}-dispatch-".format(self.config.name),
-                                                        max_workers=self.config.dispatch_thread_size)
+        self._accept_executor = ThreadPoolExecutor(thread_name_prefix="{}-accept-".format(self.config.name),
+                                                   max_workers=1)
+        self._read_executor = ThreadPoolExecutor(thread_name_prefix="{}-read-".format(self.config.name),
+                                                 max_workers=1)
+        self._dispatcher = DuckSocketDispatch(name=self.config.name,
+                                              decode_thread_size=self.config.decode_thread_size,
+                                              dispatch_thread_size=self.config.dispatch_thread_size,
+                                              dispatch_handler=self,
+                                              logger=self.logger)
 
-    def accept(self):
+    def accept_loop(self):
         while not self._shutdown_flag:
-            events = self.accept_selector.select(timeout=1)
+            events = self.accept_selector.select(timeout=self.config.accept_select_timeout)
             for key, _mask in events:
-                accpter: DuckSocketAccepter = key.data
-                accpter.accept()
+                socket_accept: DuckSocketAccept = key.data
+                socket_accept.accept()
 
-    def read(self):
+    def read_loop(self):
         while not self._shutdown_flag:
-            events = self.read_selector.select(timeout=1)
-            socket_receiver_queue = queue.Queue()
+            events = self.read_selector.select(timeout=self.config.read_select_timeout)
+            acc: list[DuckSocketReceiver] = []
             for key, _mask in events:
-                socket_receiver: DuckSocketReceiver = key.data
-                socket_receiver_queue.put(socket_receiver)
-                self._recv_thread_pool.submit(self._recv_sock, socket_receiver_queue)
-            socket_receiver_queue.join()
-
-    def _recv_sock(self, q: queue.Queue[DuckSocketReceiver]):
-        socket_receiver: DuckSocketReceiver = q.get()
-        res, packet = socket_receiver.recv()
-        if res == RecvResult.SOCKET_CLOSED:
-            socket_receiver.socket_wrap.sock.close()
-            self.read_selector.unregister(socket_receiver.socket_wrap.sock)
-        if packet is not None:
-            self._dispatch_thread_pool.submit(self._dispatch_packet, socket_receiver.socket_wrap, packet)
-        q.task_done()
-
-    def _dispatch_packet(self, socket_wrap: DuckSocketWrap, packet: DuckPacket):
-        packet.body = self.handler.handle(packet.body)
-        self.sender.send(socket_wrap=socket_wrap, packet=packet)
+                acc.append(key.data)
+            self._dispatcher.dispatch(acc)
 
     def start(self) -> None:
         sock = self.factory.create()
@@ -112,16 +119,23 @@ class DuckRpcServer(object):
         sock.listen(self.config.backlog)
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
-        accepter: DuckSocketAccepter = DuckSocketAccepter(socket_wrap=socket_wrap,
-                                                          selector=self.read_selector,
-                                                          coder=self.coder)
-        self.accept_selector.register(sock, selectors.EVENT_READ, accepter)
-        self._accept_thread_pool.submit(self.accept)
-        self._read_thread_pool.submit(self.read)
+        socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
+                                                           selector=self.read_selector,
+                                                           coder=self.coder,
+                                                           logger=self.logger)
+        self.accept_selector.register(sock, selectors.EVENT_READ, socket_accept)
+        self._accept_executor.submit(self.accept_loop)
+        self._read_executor.submit(self.read_loop)
+
+    def dispatch_packet(self, recv: DuckSocketReceiver, packet: DuckPacket) -> None:
+        result = self.handler.handle_body(packet.body)
+        packet.body = result
+        self.sender.send(recv.socket_wrap, packet=packet)
+
+    def dispatch_socket_close(self, recv: DuckSocketReceiver):
+        self.read_selector.unregister(recv.socket_wrap.sock)
 
     def shutdown(self):
         self._shutdown_flag = True
-        self._accept_thread_pool.shutdown()
-        self._read_thread_pool.shutdown()
-        self._recv_thread_pool.shutdown()
-        self._dispatch_thread_pool.shutdown()
+        self._accept_executor.shutdown()
+        self._read_executor.shutdown()

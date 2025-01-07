@@ -14,11 +14,11 @@ DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 
 class DispatchHandler(ABC):
     @abstractmethod
-    def handle_packet(self, packet: DuckPacket) -> None:
+    def dispatch_packet(self, recv: DuckSocketReceiver, packet: DuckPacket) -> None:
         raise NotImplementedError()
 
     @abstractmethod
-    def handle_socket_close(self, recv: DuckSocketReceiver):
+    def dispatch_socket_close(self, recv: DuckSocketReceiver):
         pass
 
 
@@ -62,9 +62,9 @@ class DuckSocketDispatch(object):
         result, packet = recv.recv()
         if result == RecvResult.SOCKET_CLOSED:
             self.logger.debug(f"dispatch socket close {recv}")
-            self._dispatch_executor.submit(self.dispatch_handler.handle_socket_close, recv)
+            self._dispatch_executor.submit(self.dispatch_handler.dispatch_socket_close, recv)
 
         if packet is not None:
             self.logger.debug(f"dispatch packet {packet}")
-            self._dispatch_executor.submit(self.dispatch_handler.handle_packet, packet)
+            self._dispatch_executor.submit(self.dispatch_handler.dispatch_packet, recv, packet)
         q.task_done()
