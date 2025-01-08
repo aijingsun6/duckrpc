@@ -3,9 +3,7 @@ from typing import Optional
 import struct
 import logging
 
-from .duck_coder import DuckCoder
 from .duck_socket_wrap import DuckSocketWrap
-from .duck_packet import DuckPacket
 
 
 class RecvStatus(Enum):
@@ -24,27 +22,25 @@ class DuckSocketReceiver(object):
     acc_bytes: bytes = b''
     body_size: int = 0
     socket_wrap: DuckSocketWrap
-    coder: DuckCoder
     logger: logging.Logger
 
-    def __init__(self, socket_wrap: DuckSocketWrap, coder: DuckCoder, logger=None):
+    def __init__(self, socket_wrap: DuckSocketWrap, logger=None):
         self.recv_status = RecvStatus.READ_HEAD
         self.acc_bytes = b''
         self.socket_wrap = socket_wrap
         self.body_size = 0
-        self.coder = coder
         if logger is None:
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
 
-    def recv(self) -> tuple[RecvResult, Optional[DuckPacket]]:
+    def recv(self) -> tuple[RecvResult, Optional[bytes]]:
         if self.recv_status == RecvStatus.READ_HEAD:
             return self._recv_head()
         elif self.recv_status == RecvStatus.READ_BODY:
             return self._recv_body()
 
-    def _recv_head(self) -> tuple[RecvResult, Optional[DuckPacket]]:
+    def _recv_head(self) -> tuple[RecvResult, Optional[bytes]]:
         with self.socket_wrap.read_lock:
             data = self.socket_wrap.sock.recv(4 - len(self.acc_bytes))
             self.logger.debug(f"recv {len(data)} bytes")
@@ -57,7 +53,7 @@ class DuckSocketReceiver(object):
                 self.recv_status = RecvStatus.READ_BODY
             return RecvResult.CONTINUE, None
 
-    def _recv_body(self) -> tuple[RecvResult, Optional[DuckPacket]]:
+    def _recv_body(self) -> tuple[RecvResult, Optional[bytes]]:
         with self.socket_wrap.read_lock:
             data = self.socket_wrap.sock.recv(self.body_size - len(self.acc_bytes))
             self.logger.debug(f"recv {len(data)} bytes")
@@ -65,8 +61,8 @@ class DuckSocketReceiver(object):
                 return RecvResult.SOCKET_CLOSED, None
             self.acc_bytes += data
             if len(self.acc_bytes) == self.body_size:
-                packet = self.coder.decode_packet(self.acc_bytes)
+                res = self.acc_bytes
                 self.recv_status = RecvStatus.READ_HEAD
                 self.acc_bytes = b''
-                return RecvResult.COMPLETE, packet
+                return RecvResult.COMPLETE, res
             return RecvResult.CONTINUE, None

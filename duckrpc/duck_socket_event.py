@@ -5,7 +5,6 @@ import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
-from typing import Optional
 from _typeshed import FileDescriptorLike
 
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
@@ -19,32 +18,26 @@ class DuckSocketEventHandler(ABC):
 
 
 class DuckSocketEventDispatch(object):
-    select_timeout: Optional[int]
-    logger: logging.Logger
+    select_timeout: int
+    selector: selectors.DefaultSelector
     select_executor: ThreadPoolExecutor
-
-    dispatch_thread_size: int
     dispatch_executor: ThreadPoolExecutor
+    logger: logging.Logger
 
     _start_flag: bool
     _shutdown_flag: bool
-    _lock: threading.Lock
-    _selector: selectors.DefaultSelector
 
-    def __init__(self, select_timeout=None, logger=None, dispatch_thread_size=None):
+    def __init__(self, select_timeout: int, dispatch_thread_size=DISPATCH_THREAD_SIZE_DEFAULT, logger=None):
         self.select_timeout = select_timeout
+        self.selector = selectors.DefaultSelector()
         if logger is None:
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
         self.select_executor = ThreadPoolExecutor(thread_name_prefix="DuckSocketEventDispatch-select",
                                                   max_workers=1)
-        if dispatch_thread_size is None or dispatch_thread_size < 1:
-            self.dispatch_thread_size = DISPATCH_THREAD_SIZE_DEFAULT
-        else:
-            self.dispatch_thread_size = dispatch_thread_size
         self.dispatch_executor = ThreadPoolExecutor(thread_name_prefix="DuckSocketEventDispatch-dispatch",
-                                                    max_workers=self.dispatch_thread_size)
+                                                    max_workers=dispatch_thread_size)
 
         self._shutdown_flag = False
         self._lock = threading.Lock()
@@ -70,6 +63,12 @@ class DuckSocketEventDispatch(object):
         self.logger.debug(f"dispatch {fileobj}")
         handle.handle_event(fileobj=fileobj, mask=mask)
         q.task_done()
+
+    def register(self, fileobj, events, data: DuckSocketEventHandler = None):
+        self._selector.register(fileobj, events, data)
+
+    def unregister(self, fileobj: FileDescriptorLike):
+        self._selector.unregister(fileobj)
 
     def shutdown(self):
         self._shutdown_flag = True

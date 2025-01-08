@@ -14,7 +14,7 @@ from .duck_coder import DuckCoder
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_send import DuckSocketSender
-from .duck_socket_dispatch import DuckSocketDispatch, DispatchHandler
+from .duck_socket_dispatch import DuckSocketDispatch, DuckSocketDispatchHandler
 from .duck_socket_recv import DuckSocketReceiver
 
 CORE_SIZE_DEFAULT = 8
@@ -78,7 +78,7 @@ class DuckRpcClientConfig(object):
         self.remote_port = remote_port
 
 
-class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
+class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
     config: DuckRpcClientConfig
     factory: DuckSocketFactory
     coder: DuckCoder
