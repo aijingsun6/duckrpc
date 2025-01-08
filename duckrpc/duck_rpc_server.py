@@ -1,5 +1,6 @@
 import os
 import selectors
+import socket
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -61,6 +62,7 @@ class DuckRpcServer(DispatchHandler):
     coder: DuckCoder
     handler: DuckRpcBodyHandler
     logger: logging.Logger
+    _sock: socket.socket
     _sender: DuckSocketSender
     _accept_selector = selectors.DefaultSelector()
     _read_selector = selectors.DefaultSelector()
@@ -118,6 +120,7 @@ class DuckRpcServer(DispatchHandler):
         logging.info("start rpc server, sock={}, bind={}".format(sock, bind_tuple))
         sock.listen(self.config.backlog)
         sock.setblocking(False)
+        self._sock = sock
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
                                                            selector=self._read_selector,
@@ -136,6 +139,8 @@ class DuckRpcServer(DispatchHandler):
         self._read_selector.unregister(recv.socket_wrap.sock)
 
     def shutdown(self):
+        if self._sock is not None:
+            self.factory.destroy(self._sock)
         self._shutdown_flag = True
         self._accept_executor.shutdown()
         self._read_executor.shutdown()
