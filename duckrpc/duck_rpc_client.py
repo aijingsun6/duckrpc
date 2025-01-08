@@ -19,10 +19,12 @@ from .duck_socket_recv import DuckSocketReceiver
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
-RECV_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+DECODE_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 TIMEOUT_INTERVAL_DEFAULT = 60
 TIMEOUT_DEFAULT = 600
+TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+READ_SELECT_TIMEOUT_DEFAULT = 5
 
 
 @dataclass()
@@ -50,6 +52,30 @@ class DuckRpcClientConfig(object):
     timeout_dispatch_thread_size: int
     remote_addr: str
     remote_port: int
+
+    def __init__(self,
+                 name="",
+                 core_conn_size=CORE_SIZE_DEFAULT,
+                 max_conn_size=MAX_SIZE_DEFAULT,
+                 read_select_timeout=READ_SELECT_TIMEOUT_DEFAULT,
+                 decode_thread_size=DECODE_THREAD_SIZE_DEFAULT,
+                 dispatch_thread_size=DISPATCH_THREAD_SIZE_DEFAULT,
+                 timeout_interval=TIMEOUT_INTERVAL_DEFAULT,
+                 timeout_default=TIMEOUT_DEFAULT,
+                 timeout_dispatch_thread_size=TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT,
+                 remote_addr="",
+                 remote_port=0):
+        self.name = name
+        self.core_conn_size = core_conn_size
+        self.max_conn_size = max_conn_size
+        self.read_select_timeout = read_select_timeout
+        self.decode_thread_size = decode_thread_size
+        self.dispatch_thread_size = dispatch_thread_size
+        self.timeout_interval = timeout_interval
+        self.timeout_default = timeout_default
+        self.timeout_dispatch_thread_size = timeout_dispatch_thread_size
+        self.remote_addr = remote_addr
+        self.remote_port = remote_port
 
 
 class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
@@ -83,9 +109,8 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
         pool_config = DuckPoolConfig(name=self.config.name,
                                      core_size=self.config.core_conn_size,
                                      max_size=self.config.max_conn_size)
-        self._conn_pool = DuckPool(config=pool_config, factory=self.factory, logger=logger)
         self._read_selector = selectors.DefaultSelector()
-        self._read_executor = ThreadPoolExecutor(thread_name_prefix=f"{self.config.name}-read-", max_workers=1)
+        self._read_executor = ThreadPoolExecutor(thread_name_prefix=f"{self.config.name}-read", max_workers=1)
         self._sender = DuckSocketSender(coder=self.coder)
         self._timeout_mgr = DuckTimeoutMgr(name=self.config.name,
                                            timeout_interval=self.config.timeout_interval,
@@ -99,6 +124,7 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
                                             dispatch_handler=self,
                                             logger=logger)
         self._read_executor.submit(self._select_loop)
+        self._conn_pool = DuckPool(config=pool_config, factory=self, logger=logger)
 
     def _select_loop(self):
         while not self._shutdown_flag:
@@ -111,6 +137,8 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
 
     def create(self) -> DuckSocketWrap:
         sock = self.factory.create()
+        self.logger.info(f" {sock} connect remote {self.config.remote_addr}  {self.config.remote_port}")
+
         sock.connect((self.config.remote_addr, self.config.remote_port))
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
@@ -140,7 +168,8 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
             return reply_item.reply
 
         with reply_item.cond:
-            reply = reply_item.cond.wait_for(predicate=pred, timeout=timeout)
+            reply = reply_item.cond.wait_for(predicate=pred, timeout=30)
+        self.logger.debug(f"{packet.iid} reply f{reply}")
         del self._reply_map[packet.iid]
         return reply
 

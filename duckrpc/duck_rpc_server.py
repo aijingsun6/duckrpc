@@ -64,8 +64,8 @@ class DuckRpcServer(DispatchHandler):
     logger: logging.Logger
     _sock: socket.socket
     _sender: DuckSocketSender
-    _accept_selector = selectors.DefaultSelector()
-    _read_selector = selectors.DefaultSelector()
+    _accept_selector: selectors.DefaultSelector
+    _read_selector: selectors.DefaultSelector
     _shutdown_flag: bool = False
     _accept_executor: ThreadPoolExecutor
     _read_executor: ThreadPoolExecutor
@@ -76,38 +76,44 @@ class DuckRpcServer(DispatchHandler):
                  factory: DuckSocketFactory,
                  coder: DuckCoder,
                  handler: DuckRpcBodyHandler,
-                 logger: logging.Logger):
+                 logger: logging.Logger = None):
         self.config = config
         self.factory = factory
         self.coder = coder
         self.handler = handler
-        if self.logger is None:
+        if logger is None:
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
         self._sender = DuckSocketSender(coder=coder)
+        self._accept_selector = selectors.DefaultSelector()
+        self._read_selector = selectors.DefaultSelector()
 
         self._shutdown_flag = False
-        self._accept_executor = ThreadPoolExecutor(thread_name_prefix="{}-accept-".format(self.config.name),
+        self._accept_executor = ThreadPoolExecutor(thread_name_prefix="rpc-server-{}-accept".format(self.config.name),
                                                    max_workers=1)
-        self._read_executor = ThreadPoolExecutor(thread_name_prefix="{}-read-".format(self.config.name),
+        self._read_executor = ThreadPoolExecutor(thread_name_prefix="rpc-server-{}-read".format(self.config.name),
                                                  max_workers=1)
         self._dispatcher = DuckSocketDispatch(name=self.config.name,
                                               decode_thread_size=self.config.decode_thread_size,
                                               dispatch_thread_size=self.config.dispatch_thread_size,
                                               dispatch_handler=self,
-                                              logger=self.logger)
+                                              logger=logger)
 
     def accept_loop(self):
         while not self._shutdown_flag:
+            self.logger.debug(f"accept_selector start")
             events = self._accept_selector.select(timeout=self.config.accept_select_timeout)
+            self.logger.debug(f"accept_selector events {len(events)}")
             for key, _mask in events:
                 socket_accept: DuckSocketAccept = key.data
                 socket_accept.accept()
 
     def read_loop(self):
         while not self._shutdown_flag:
+            self.logger.debug(f"read_selector start")
             events = self._read_selector.select(timeout=self.config.read_select_timeout)
+            self.logger.debug(f"read_selector events {len(events)}")
             acc: list[DuckSocketReceiver] = []
             for key, _mask in events:
                 acc.append(key.data)

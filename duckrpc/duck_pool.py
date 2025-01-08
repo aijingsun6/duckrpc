@@ -45,8 +45,8 @@ class DuckPool(object):
         self._idle_queue = Queue()
         self._count = 0
         self._lock = threading.Lock()
-        self._build_core_items()
         self._shutdown_flag = False
+        self._build_core_items()
 
     def _build_core_items(self):
         for _ in range(self.config.core_size):

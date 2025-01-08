@@ -45,9 +45,9 @@ class DuckSocketDispatch(object):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self._decode_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-decode-",
+        self._decode_executor = ThreadPoolExecutor(thread_name_prefix=f"socket-dispatch-{name}-decode",
                                                    max_workers=self.decode_thread_size)
-        self._dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-dispatch-packet-",
+        self._dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"socket-dispatch-{name}-dispatch-packet",
                                                      max_workers=self.dispatch_thread_size)
 
     def dispatch(self, recv_list: list[DuckSocketReceiver]):

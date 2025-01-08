@@ -25,6 +25,6 @@ class DuckSocketAccept(object):
         with self.socket_wrap.read_lock:
             conn, addr = self.socket_wrap.sock.accept()  # 应当已就绪
             conn.setblocking(False)
-            self.logger.debug(f"accept remote_addr: {addr}")
+            self.logger.debug(f"accept socket {conn} {addr}")
             socket_receiver = DuckSocketReceiver(socket_wrap=DuckSocketWrap(sock=conn), coder=self.coder)
             self.read_selector.register(conn, selectors.EVENT_READ, socket_receiver)

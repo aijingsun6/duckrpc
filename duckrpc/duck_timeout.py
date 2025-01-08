@@ -36,8 +36,8 @@ class DuckTimeoutMgr(object):
     def __init__(self,
                  name="",
                  timeout_interval=TIMEOUT_INTERVAL_DEFAULT,
-                 handler: TimeoutHandler = TimeoutHandler(),
                  dispatch_thread_size=DISPATCH_THREAD_POOL_SIZE,
+                 handler: TimeoutHandler = None,
                  logger=None):
         self.name = name
         self.timeout_interval = timeout_interval
@@ -46,7 +46,7 @@ class DuckTimeoutMgr(object):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self._loop_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout-",
+        self._loop_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout",
                                                  max_workers=1)
         self._dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"{name}-timeout-dispatch",
                                                      max_workers=dispatch_thread_size)
