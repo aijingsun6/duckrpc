@@ -105,6 +105,8 @@ class DuckRpcServer(DispatchHandler):
             self.logger.debug(f"accept_selector start")
             events = self._accept_selector.select(timeout=self.config.accept_select_timeout)
             self.logger.debug(f"accept_selector events {len(events)}")
+            if len(events) < 1:
+                continue
             for key, _mask in events:
                 socket_accept: DuckSocketAccept = key.data
                 socket_accept.accept()
@@ -114,6 +116,8 @@ class DuckRpcServer(DispatchHandler):
             self.logger.debug(f"read_selector start")
             events = self._read_selector.select(timeout=self.config.read_select_timeout)
             self.logger.debug(f"read_selector events {len(events)}")
+            if len(events) < 1:
+                continue
             acc: list[DuckSocketReceiver] = []
             for key, _mask in events:
                 acc.append(key.data)

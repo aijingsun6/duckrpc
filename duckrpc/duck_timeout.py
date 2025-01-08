@@ -64,8 +64,8 @@ class DuckTimeoutMgr(object):
             if sleep > 0:
                 time.sleep(sleep)
 
-    def add_item(self, value: any, timeout: int):
-        timeout_at = int(time.time()) + timeout
+    def add_item(self, value: any, timeout):
+        timeout_at = time.time() + timeout
         item = TimeoutItem(timeout_at=timeout_at, value=value)
         heapq.heappush(self._heapq, item)
         self.logger.debug(f"heappush {item}")

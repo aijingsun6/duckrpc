@@ -153,15 +153,17 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
     def rpc(self, body: any, timeout=None) -> any:
         if timeout is None:
             timeout = self.config.timeout_default
+
         start = time.time()
         socket_wrap = self._conn_pool.check_out(timeout=timeout)
         packet = self._build_packet(body=body)
+        self.logger.debug(f"rpc start, {packet.iid} {packet.body}")
         self._sender.send(socket_wrap=socket_wrap, packet=packet)
         self._conn_pool.check_in(socket_wrap)
 
         reply_item = ReplyItem(iid=packet.iid)
         self._reply_map[packet.iid] = reply_item
-        timeout = timeout - time.time() + start
+        timeout = max(0, timeout - time.time() + start)
         self._timeout_mgr.add_item(packet.iid, timeout)
 
         def pred():
@@ -169,7 +171,7 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DispatchHandler):
 
         with reply_item.cond:
             reply = reply_item.cond.wait_for(predicate=pred, timeout=30)
-        self.logger.debug(f"{packet.iid} reply f{reply}")
+        self.logger.debug(f"rpc end, {packet.iid} {reply}, cost {time.time() - start}")
         del self._reply_map[packet.iid]
         return reply
 
