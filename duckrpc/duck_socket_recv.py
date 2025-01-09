@@ -48,7 +48,7 @@ class DuckSocketReceiver(object):
                 return RecvResult.SOCKET_CLOSED, None
             self.acc_bytes += data
             if len(self.acc_bytes) == 4:
-                self.ctx_size = struct.unpack("!I", self.acc_bytes)[0]
+                self.body_size = struct.unpack("!I", self.acc_bytes)[0]
                 self.acc_bytes = b''
                 self.recv_status = RecvStatus.READ_BODY
             return RecvResult.CONTINUE, None

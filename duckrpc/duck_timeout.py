@@ -13,7 +13,7 @@ DISPATCH_THREAD_POOL_SIZE = min(32, (os.cpu_count() or 1) + 4)
 @dataclass(order=True)
 class TimeoutItem(object):
     timeout_at: int
-    value: str
+    value: any
 
 
 class TimeoutHandler(ABC):
@@ -54,12 +54,16 @@ class DuckTimeoutMgr(object):
 
     def _timeout_loop(self):
         while not self._shutdown_flag:
-            self.logger.debug(f"{self.name} timeout...")
+            self.logger.debug(f"timeout begin.")
             start = int(time.time())
-            while self._heapq and heapq.nsmallest(1, self._heapq)[0].timeout_at > start:
-                item = heapq.heappop(self._heapq)
+            while len(self._heapq) > 0:
+                item: TimeoutItem = heapq.heappop(self._heapq)
+                if item.timeout_at < start:
+                    heapq.heappush(self._heapq, item)
+                    break
                 self.logger.debug(f"handle timeout item {item}")
-                self._dispatch_executor.submit(self.handler.handle_timeout, item)
+                self.handler.handle_timeout(item)
+
             cost = int(time.time()) - start
             sleep = max(0, self.timeout_interval - cost)
             if sleep > 0:
@@ -72,7 +76,10 @@ class DuckTimeoutMgr(object):
         self.logger.debug(f"heappush {item}")
 
     def shutdown(self):
-        self.logger.debug("shutdown")
+        self.logger.debug("shutdown start")
         self._shutdown_flag = True
+        self.logger.debug("shutdown _loop_executor")
         self._loop_executor.shutdown()
+        self.logger.debug("shutdown _dispatch_executor")
         self._dispatch_executor.shutdown()
+        self.logger.debug("shutdown end")

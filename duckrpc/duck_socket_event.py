@@ -51,11 +51,14 @@ class DuckSocketEventDispatch(object):
             self.logger.debug(f"select end, events: {len(events)}")
             if len(events) < 1:
                 continue
-            q = queue.Queue()
-            for recv in events:
-                q.put(recv)
-                self.dispatch_executor.submit(self._dispatch, q)
-            q.join()
+            for key, mask in events:
+                handler:DuckSocketEventHandler = key.data
+                handler.handle_event(key.fileobj,mask=mask)
+            # q = queue.Queue()
+            #for recv in events:
+            #    q.put(recv)
+            #    self.dispatch_executor.submit(self._dispatch, q)
+            #q.join()
 
     def _dispatch(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
         event: tuple[selectors.SelectorKey, int] = q.get()
