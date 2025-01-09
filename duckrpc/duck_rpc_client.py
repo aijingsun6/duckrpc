@@ -8,7 +8,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from .duck_pool import DuckPool, DuckPoolConfig
-from .duck_timeout import DuckTimeoutMgr, TimeoutItem, TimeoutHandler
 from .duck_factory import DuckFactory
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
@@ -67,7 +66,7 @@ class DuckRpcClientConfig(object):
         self.remote_port = remote_port
 
 
-class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
+class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
     config: DuckRpcClientConfig
     context: DuckRpcContext
     socket_event_dispatch: DuckSocketEventDispatch
@@ -78,7 +77,6 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
     _read_selector: selectors.DefaultSelector
     _read_executor: ThreadPoolExecutor
     _sender: DuckSocketSender
-    _timeout_mgr: DuckTimeoutMgr
     _reply_map: dict[str, ReplyItem]
 
     def __init__(self,
@@ -99,11 +97,6 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
         pool_config = DuckPoolConfig(name=self.config.name,
                                      core_size=self.config.core_conn_size,
                                      max_size=self.config.max_conn_size)
-        self._timeout_mgr = DuckTimeoutMgr(name=self.config.name,
-                                           timeout_interval=self.config.timeout_interval,
-                                           handler=self,
-                                           dispatch_thread_size=self.config.timeout_dispatch_thread_size,
-                                           logger=self.logger)
         self._reply_map = dict()
         self._conn_pool = DuckPool(config=pool_config, factory=self, logger=logger)
 
@@ -139,8 +132,6 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
         reply_item = ReplyItem(iid=packet.iid)
         self._reply_map[packet.iid] = reply_item
         timeout = max(0, timeout - time.time() + start)
-        self._timeout_mgr.add_item(packet.iid, timeout)
-
         def pred():
             return reply_item.reply
 
@@ -154,11 +145,6 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
         return DuckPacket(name=self.config.name,
                           iid=str(uuid.uuid4()),
                           body=body)
-
-    def handle_timeout(self, item: TimeoutItem):
-        if item.value in self._reply_map:
-            logging.info(f"delete timeout reply {item.value}")
-            del self._reply_map[item.value]
 
     def dispatch_packet(self, recv: DuckSocketReceiver, packet: DuckPacket) -> None:
         iid = packet.iid
@@ -177,5 +163,4 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
     def shutdown(self):
         self._shutdown_flag = True
         self._conn_pool.shutdown()
-        self._timeout_mgr.shutdown()
         self.socket_event_dispatch.shutdown()
