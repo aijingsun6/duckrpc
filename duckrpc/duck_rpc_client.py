@@ -9,12 +9,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from .duck_pool import DuckPool, DuckPoolConfig
 from .duck_timeout import DuckTimeoutMgr, TimeoutItem, TimeoutHandler
-from .duck_factory import DuckFactory, DuckSocketFactory
-from .duck_coder import DuckCoder
+from .duck_factory import DuckFactory
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_send import DuckSocketSender
-from .duck_socket_dispatch import DuckSocketDispatch, DuckSocketDispatchHandler
+from .duck_socket_dispatch import DuckSocketDispatchHandler
 from .duck_socket_recv import DuckSocketReceiver
 from .duck_rpc_context import DuckRpcContext
 from .duck_socket_accept import DuckSocketAccept
@@ -24,7 +23,6 @@ MAX_SIZE_DEFAULT = 16
 TIMEOUT_INTERVAL_DEFAULT = 60
 TIMEOUT_DEFAULT = 600
 TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
-READ_SELECT_TIMEOUT_DEFAULT = 5
 
 
 @dataclass()
@@ -54,7 +52,6 @@ class DuckRpcClientConfig(object):
                  name="",
                  core_conn_size=CORE_SIZE_DEFAULT,
                  max_conn_size=MAX_SIZE_DEFAULT,
-                 read_select_timeout=READ_SELECT_TIMEOUT_DEFAULT,
                  timeout_interval=TIMEOUT_INTERVAL_DEFAULT,
                  timeout_default=TIMEOUT_DEFAULT,
                  timeout_dispatch_thread_size=TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT,
@@ -63,7 +60,6 @@ class DuckRpcClientConfig(object):
         self.name = name
         self.core_conn_size = core_conn_size
         self.max_conn_size = max_conn_size
-        self.read_select_timeout = read_select_timeout
         self.timeout_interval = timeout_interval
         self.timeout_default = timeout_default
         self.timeout_dispatch_thread_size = timeout_dispatch_thread_size
