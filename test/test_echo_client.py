@@ -109,13 +109,11 @@ class EchoClientTest(unittest.TestCase):
     def get_client(self) -> DuckRpcClient:
         return type(self).rpc_client
 
-    def test_get_client(self):
-        self.assertIsNotNone(self.get_client())
-
     def test_simple(self):
         client: DuckRpcClient = self.get_client()
         req = "hello"
         res = client.rpc(body=req, timeout=5)
+        time.sleep(60)
         self.assertEqual(req, res)
 
 

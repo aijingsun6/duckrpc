@@ -3,6 +3,7 @@ import os
 import logging
 import threading
 import queue
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 
@@ -58,12 +59,16 @@ class DuckSocketEventDispatch(object):
 
     def _dispatch(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
         event: tuple[selectors.SelectorKey, int] = q.get()
-        fileobj = event[0].fileobj
-        mask: int = event[1]
-        handle: DuckSocketEventHandler = event[0].data
-        self.logger.debug(f"dispatch {fileobj}")
-        handle.handle_event(fileobj=fileobj, mask=mask)
-        q.task_done()
+        try:
+            fileobj = event[0].fileobj
+            mask: int = event[1]
+            handle: DuckSocketEventHandler = event[0].data
+            self.logger.debug(f"dispatch {fileobj}")
+            handle.handle_event(fileobj=fileobj, mask=mask)
+        except:
+            self.logger.error(f"{traceback.format_exc()}")
+        finally:
+            q.task_done()
 
     def register(self, fileobj, events, data: DuckSocketEventHandler = None):
         self.logger.debug(f"register {fileobj} {data}")
