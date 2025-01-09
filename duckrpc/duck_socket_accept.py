@@ -32,7 +32,7 @@ class DuckSocketAccept(DuckSocketEventHandler):
         with self.socket_wrap.read_lock:
             sock, addr = self.socket_wrap.sock.accept()  # 应当已就绪
             sock.setblocking(False)
-            self.logger.debug(f"accep {sock} {addr}")
+            self.logger.debug(f"accept {sock}")
             socket_wrap: DuckSocketWrap = DuckSocketWrap(sock=sock)
             dispatch: DuckSocketDispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
                                                               coder=self.context.coder,
