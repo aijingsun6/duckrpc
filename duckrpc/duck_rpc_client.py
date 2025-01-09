@@ -129,7 +129,7 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
         socket_wrap = self._conn_pool.check_out(timeout=timeout)
         packet = self._build_packet(body=body)
         self.logger.debug(f"rpc start, {packet.iid} {packet.body}")
-        self._sender.send(socket_wrap=socket_wrap, packet=packet)
+        self.context.socket_sender.send(socket_wrap=socket_wrap, packet=packet)
         self._conn_pool.check_in(socket_wrap)
 
         reply_item = ReplyItem(iid=packet.iid)
@@ -173,6 +173,4 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
     def shutdown(self):
         self._shutdown_flag = True
         self._conn_pool.shutdown()
-        self._read_executor.shutdown()
         self._timeout_mgr.shutdown()
-        self._dispatch.shutdown()

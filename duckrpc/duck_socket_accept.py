@@ -1,6 +1,5 @@
 import selectors
 import logging
-from _typeshed import FileDescriptorLike
 
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_event import DuckSocketEventHandler
@@ -29,7 +28,7 @@ class DuckSocketAccept(DuckSocketEventHandler):
         else:
             self.logger = logger
 
-    def handle_event(self, fileobj: FileDescriptorLike, mask: int) -> None:
+    def handle_event(self, fileobj, mask: int) -> None:
         with self.socket_wrap.read_lock:
             sock, addr = self.socket_wrap.sock.accept()  # 应当已就绪
             sock.setblocking(False)

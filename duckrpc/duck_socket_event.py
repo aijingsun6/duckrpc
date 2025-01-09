@@ -5,7 +5,6 @@ import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
-from _typeshed import FileDescriptorLike
 
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 
@@ -13,7 +12,7 @@ DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 class DuckSocketEventHandler(ABC):
 
     @abstractmethod
-    def handle_event(self, fileobj: FileDescriptorLike, mask: int) -> None:
+    def handle_event(self, fileobj, mask: int) -> None:
         raise NotImplementedError()
 
 
@@ -57,7 +56,7 @@ class DuckSocketEventDispatch(object):
 
     def _dispatch(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
         event: tuple[selectors.SelectorKey, int] = q.get()
-        fileobj: FileDescriptorLike = event[0].fileobj
+        fileobj = event[0].fileobj
         mask: int = event[1]
         handle: DuckSocketEventHandler = event[0].data
         self.logger.debug(f"dispatch {fileobj}")
@@ -67,7 +66,7 @@ class DuckSocketEventDispatch(object):
     def register(self, fileobj, events, data: DuckSocketEventHandler = None):
         self._selector.register(fileobj, events, data)
 
-    def unregister(self, fileobj: FileDescriptorLike):
+    def unregister(self, fileobj):
         self._selector.unregister(fileobj)
 
     def shutdown(self):
