@@ -13,7 +13,7 @@ from .duck_factory import DuckFactory
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_send import DuckSocketSender
-from .duck_socket_dispatch import DuckSocketDispatchHandler
+from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 from .duck_socket_recv import DuckSocketReceiver
 from .duck_rpc_context import DuckRpcContext
 from .duck_socket_accept import DuckSocketAccept
@@ -71,6 +71,7 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
     config: DuckRpcClientConfig
     context: DuckRpcContext
     logger: logging.Logger
+    _origin_logger: logging.Logger
     _shutdown_flag: bool
     _conn_pool: DuckPool
     _read_selector: selectors.DefaultSelector
@@ -89,13 +90,12 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
+        self._origin_logger = logger
 
         self._shutdown_flag = False
         pool_config = DuckPoolConfig(name=self.config.name,
                                      core_size=self.config.core_conn_size,
                                      max_size=self.config.max_conn_size)
-
-
         self._timeout_mgr = DuckTimeoutMgr(name=self.config.name,
                                            timeout_interval=self.config.timeout_interval,
                                            handler=self,
@@ -110,11 +110,12 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
         sock.connect((self.config.remote_addr, self.config.remote_port))
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
-        socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
-                                                           context=self.context,
-                                                           dispatch_handler=self,
-                                                           logger=self.logger)
-        self.context.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_accept)
+        socket_dispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
+                                             coder=self.context.coder,
+                                             dispatch_handler=self,
+                                             dispatch_executor=self.context.dispatch_packet_executor,
+                                             logger=self._origin_logger)
+        self.context.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_dispatch)
         return socket_wrap
 
     def destroy(self, socket_wrap: DuckSocketWrap) -> None:
@@ -141,7 +142,7 @@ class DuckRpcClient(DuckFactory, TimeoutHandler, DuckSocketDispatchHandler):
             return reply_item.reply
 
         with reply_item.cond:
-            reply = reply_item.cond.wait_for(predicate=pred, timeout=30)
+            reply = reply_item.cond.wait_for(predicate=pred, timeout=timeout)
         self.logger.debug(f"rpc end, {packet.iid} {reply}, cost {time.time() - start}")
         del self._reply_map[packet.iid]
         return reply

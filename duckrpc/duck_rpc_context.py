@@ -22,7 +22,7 @@ class DuckRpcContext(object):
                  socket_sender: DuckSocketSender):
         if dispatch_packet_thread_size is None or dispatch_packet_thread_size < 1:
             dispatch_packet_thread_size = DISPATCH_PACKET_THREAD_SIZE_DEFAULT
-        self.dispatch_socket_executor = ThreadPoolExecutor(thread_name_prefix="duck-dispatch-packet-exec",
+        self.dispatch_packet_executor = ThreadPoolExecutor(thread_name_prefix="duck-dispatch-packet-exec",
                                                            max_workers=dispatch_packet_thread_size)
         self.coder = coder
         self.socket_factory = socket_factory

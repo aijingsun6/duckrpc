@@ -48,6 +48,8 @@ class DuckSocketEventDispatch(object):
             self.logger.debug("select start")
             events = self._selector.select(timeout=self.select_timeout)
             self.logger.debug(f"select end, events: {len(events)}")
+            if len(events) < 1:
+                continue
             q = queue.Queue()
             for recv in events:
                 q.put(recv)
@@ -64,12 +66,15 @@ class DuckSocketEventDispatch(object):
         q.task_done()
 
     def register(self, fileobj, events, data: DuckSocketEventHandler = None):
+        self.logger.debug(f"register {fileobj} {data}")
         self._selector.register(fileobj, events, data)
 
     def unregister(self, fileobj):
+        self.logger.debug(f"unregister {fileobj}")
         self._selector.unregister(fileobj)
 
     def shutdown(self):
+        self.logger.debug("shutdown")
         self._shutdown_flag = True
         self.select_executor.shutdown()
         self.dispatch_executor.shutdown()

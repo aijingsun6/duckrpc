@@ -54,6 +54,7 @@ class DuckTimeoutMgr(object):
 
     def _timeout_loop(self):
         while not self._shutdown_flag:
+            self.logger.debug(f"{self.name} timeout...")
             start = int(time.time())
             while self._heapq and heapq.nsmallest(1, self._heapq)[0].timeout_at > start:
                 item = heapq.heappop(self._heapq)
@@ -71,6 +72,7 @@ class DuckTimeoutMgr(object):
         self.logger.debug(f"heappush {item}")
 
     def shutdown(self):
+        self.logger.debug("shutdown")
         self._shutdown_flag = True
         self._loop_executor.shutdown()
         self._dispatch_executor.shutdown()
