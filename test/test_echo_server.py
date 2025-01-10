@@ -3,20 +3,21 @@ import socket
 import unittest
 import logging
 import sys
-from duckrpc.duck_rpc_server import DuckRpcBodyHandler
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
+from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
 from duckrpc.duck_rpc_context import DuckRpcContext
 from duckrpc.duck_socket_send import DuckSocketSender
 from duckrpc.duck_socket_event import DuckSocketEventDispatch
-from echo_socket_server import EchoSocketServer
+from echo_socket_client import EchoSocketClient
 
 logging.basicConfig(stream=sys.stdout,
                     level=logging.DEBUG,
                     format="%(asctime)s %(name)s %(levelname)s %(threadName)s %(filename)s %(lineno)d %(message)s")
 logger = logging.getLogger(__name__)
+
 
 
 class EchoHandler(DuckRpcBodyHandler):
@@ -31,6 +32,7 @@ class EchoCoder(DuckCoder):
         return json.dumps(packet.__dict__).encode("utf-8")
 
     def decode_packet(self, data: bytes) -> DuckPacket:
+        logger.info(f"{data}")
         packet = DuckPacket()
         packet.__dict__ = json.loads(data.decode("utf-8"))
         return packet
@@ -60,8 +62,11 @@ def build_context() -> DuckRpcContext:
                           socket_sender=sender)
 
 
-def build_rpc_server():
-    return EchoSocketServer(port=BIND_PORT)
+def build_rpc_server(ctx: DuckRpcContext):
+
+    config = DuckRpcServerConfig(bind_addr=BIND_ADDR,bind_port=BIND_PORT,backlog=BACKLOG)
+    event_dispatch = DuckSocketEventDispatch(select_timeout=1, dispatch_thread_size=1)
+    return DuckRpcServer(config=config,context=ctx,socket_event_dispatch=event_dispatch,handler=EchoHandler())
 
 
 def build_rpc_client(context: DuckRpcContext):
@@ -79,16 +84,19 @@ def build_rpc_client(context: DuckRpcContext):
     return DuckRpcClient(config=config, context=context, socket_event_dispatch=event_dispatch)
 
 
-class EchoClientTest(unittest.TestCase):
+class EchoServerTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         logging.info("setUpClass {}".format(cls))
-        cls.rpc_server = build_rpc_server()
-        cls.rpc_server.start()
         ctx = build_context()
+        cls.rpc_server = build_rpc_server(ctx=ctx)
+        cls.rpc_server.start()
 
-        cls.rpc_client = build_rpc_client(context=ctx)
+
+        cls.rpc_client = EchoSocketClient(socket_factory=ctx.socket_factory,
+                                          socket_sender=ctx.socket_sender,
+                                          port=BIND_PORT)
 
     @classmethod
     def tearDownClass(cls):
@@ -96,12 +104,12 @@ class EchoClientTest(unittest.TestCase):
         cls.rpc_server.shutdown()
         cls.rpc_client.shutdown()
 
-    def get_client(self) -> DuckRpcClient:
+    def get_client(self) -> EchoSocketClient:
         return type(self).rpc_client
 
     def test_simple(self):
         req = "hello"
-        res = self.rpc_client.rpc(body=req, timeout=5)
+        res = self.rpc_client.rpc(req)
         self.assertEqual(req, res)
 
 

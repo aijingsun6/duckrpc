@@ -2,7 +2,7 @@ import selectors
 import logging
 
 from .duck_socket_wrap import DuckSocketWrap
-from .duck_socket_event import DuckSocketEventHandler
+from .duck_socket_event import DuckSocketEventHandler, DuckSocketEventDispatch
 from .duck_rpc_context import DuckRpcContext
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 
@@ -10,6 +10,7 @@ from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 class DuckSocketAccept(DuckSocketEventHandler):
     socket_wrap: DuckSocketWrap
     context: DuckRpcContext
+    socket_event_dispatch: DuckSocketEventDispatch
     dispatch_handler: DuckSocketDispatchHandler
     logger: logging.Logger
     _origin_logger: logging.Logger
@@ -17,10 +18,12 @@ class DuckSocketAccept(DuckSocketEventHandler):
     def __init__(self,
                  socket_wrap: DuckSocketWrap,
                  context: DuckRpcContext,
+                 socket_event_dispatch: DuckSocketEventDispatch,
                  dispatch_handler: DuckSocketDispatchHandler,
                  logger=None):
         self.socket_wrap = socket_wrap
         self.context = context
+        self.socket_event_dispatch = socket_event_dispatch
         self.dispatch_handler = dispatch_handler
         self._origin_logger = logger
         if logger is None:
@@ -39,4 +42,4 @@ class DuckSocketAccept(DuckSocketEventHandler):
                                                               dispatch_handler=self.dispatch_handler,
                                                               dispatch_executor=self.context.dispatch_packet_executor,
                                                               logger=self._origin_logger)
-            self.context.socket_event_dispatch.register(sock, selectors.EVENT_READ, dispatch)
+            self.socket_event_dispatch.register(sock, selectors.EVENT_READ, dispatch)

@@ -86,3 +86,4 @@ class DuckSocketEventDispatch(object):
         self._shutdown_flag = True
         self.select_executor.shutdown()
         self.dispatch_executor.shutdown()
+        self.selector.close()

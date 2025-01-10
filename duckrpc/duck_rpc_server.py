@@ -8,6 +8,7 @@ from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_accept import DuckSocketAccept
 from .duck_socket_dispatch import DuckSocketDispatchHandler
+from .duck_socket_event import DuckSocketEventDispatch
 from .duck_rpc_context import DuckRpcContext
 
 
@@ -36,6 +37,7 @@ class DuckRpcBodyHandler(ABC):
 class DuckRpcServer(DuckSocketDispatchHandler):
     config: DuckRpcServerConfig
     context: DuckRpcContext
+    socket_event_dispatch: DuckSocketEventDispatch
     handler: DuckRpcBodyHandler
 
     logger: logging.Logger
@@ -44,10 +46,12 @@ class DuckRpcServer(DuckSocketDispatchHandler):
     def __init__(self,
                  config: DuckRpcServerConfig,
                  context: DuckRpcContext,
+                 socket_event_dispatch: DuckSocketEventDispatch,
                  handler: DuckRpcBodyHandler,
                  logger: logging.Logger = None):
         self.config = config
         self.context = context
+        self.socket_event_dispatch = socket_event_dispatch
         self.handler = handler
         if logger is None:
             self.logger = logging.getLogger(__name__)
@@ -66,9 +70,10 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
                                                            context=self.context,
+                                                           socket_event_dispatch=self.socket_event_dispatch,
                                                            dispatch_handler=self,
                                                            logger=self.logger)
-        self.context.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_accept)
+        self.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_accept)
 
     def dispatch_packet(self, socket_wrap: DuckSocketWrap, packet: DuckPacket) -> None:
         result = self.handler.handle_body(packet.body)
@@ -76,9 +81,10 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         self.context.socket_sender.send(socket_wrap, packet=packet)
 
     def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
-        self.context.socket_event_dispatch.unregister(socket_wrap.sock)
+        self.socket_event_dispatch.unregister(socket_wrap.sock)
 
     def shutdown(self):
         if self._sock is not None:
-            self.context.socket_event_dispatch.unregister(self._sock)
+            self.socket_event_dispatch.unregister(self._sock)
             self.context.socket_factory.destroy(self._sock)
+        self.socket_event_dispatch.shutdown()
