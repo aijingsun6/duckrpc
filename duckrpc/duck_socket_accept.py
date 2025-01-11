@@ -1,30 +1,34 @@
 import selectors
 import logging
+from concurrent.futures.thread import ThreadPoolExecutor
 
 from .duck_socket_wrap import DuckSocketWrap
+from .duck_coder import DuckCoder
 from .duck_socket_event import DuckSocketEventHandler, DuckSocketEventDispatch
-from .duck_rpc_context import DuckRpcContext
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 
 
 class DuckSocketAccept(DuckSocketEventHandler):
     socket_wrap: DuckSocketWrap
-    context: DuckRpcContext
+    coder: DuckCoder
     socket_event_dispatch: DuckSocketEventDispatch
     dispatch_handler: DuckSocketDispatchHandler
+    dispatch_executor: ThreadPoolExecutor
     logger: logging.Logger
     _origin_logger: logging.Logger
 
     def __init__(self,
                  socket_wrap: DuckSocketWrap,
-                 context: DuckRpcContext,
+                 coder: DuckCoder,
                  socket_event_dispatch: DuckSocketEventDispatch,
                  dispatch_handler: DuckSocketDispatchHandler,
+                 dispatch_executor: ThreadPoolExecutor,
                  logger=None):
         self.socket_wrap = socket_wrap
-        self.context = context
+        self.coder = coder
         self.socket_event_dispatch = socket_event_dispatch
         self.dispatch_handler = dispatch_handler
+        self.dispatch_executor = dispatch_executor
         self._origin_logger = logger
         if logger is None:
             self.logger = logging.getLogger(__name__)
@@ -38,8 +42,8 @@ class DuckSocketAccept(DuckSocketEventHandler):
             self.logger.debug(f"accept {sock}")
             socket_wrap: DuckSocketWrap = DuckSocketWrap(sock=sock)
             dispatch: DuckSocketDispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
-                                                              coder=self.context.coder,
+                                                              coder=self.coder,
                                                               dispatch_handler=self.dispatch_handler,
-                                                              dispatch_executor=self.context.dispatch_packet_executor,
+                                                              dispatch_executor=self.dispatch_executor,
                                                               logger=self._origin_logger)
             self.socket_event_dispatch.register(sock, selectors.EVENT_READ, dispatch)

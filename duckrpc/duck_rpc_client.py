@@ -7,21 +7,20 @@ import logging
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from .duck_coder import DuckCoder, DefaultDuckCoder
 from .duck_pool import DuckPool, DuckPoolConfig
-from .duck_factory import DuckFactory
+from .duck_factory import DuckFactory, DuckSocketFactory
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_send import DuckSocketSender
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 from .duck_socket_recv import DuckSocketReceiver
-from .duck_rpc_context import DuckRpcContext
-from .duck_socket_event import DuckSocketEventDispatch
+from .duck_socket_event import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
-TIMEOUT_INTERVAL_DEFAULT = 60
 TIMEOUT_DEFAULT = 600
-TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
+PACKET_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 
 
 @dataclass()
@@ -41,58 +40,61 @@ class DuckRpcClientConfig(object):
     name: str
     core_conn_size: int
     max_conn_size: int
-    timeout_interval: int
-    timeout_default: int
-    timeout_dispatch_thread_size: int
+    timeout_default: int | float
     remote_addr: str
     remote_port: int
+    packet_dispatch_thread_size: int
+    coder: DuckCoder
+    socket_factory: DuckSocketFactory
 
     def __init__(self,
                  name="",
                  core_conn_size=CORE_SIZE_DEFAULT,
                  max_conn_size=MAX_SIZE_DEFAULT,
-                 timeout_interval=TIMEOUT_INTERVAL_DEFAULT,
                  timeout_default=TIMEOUT_DEFAULT,
-                 timeout_dispatch_thread_size=TIMEOUT_DISPATCH_THREAD_SIZE_DEFAULT,
                  remote_addr="",
-                 remote_port=0):
+                 remote_port=0,
+                 packet_dispatch_thread_size=PACKET_DISPATCH_THREAD_SIZE_DEFAULT,
+                 coder: DuckCoder = DefaultDuckCoder(),
+                 socket_factory: DuckFactory = DuckSocketFactory()):
         self.name = name
         self.core_conn_size = core_conn_size
         self.max_conn_size = max_conn_size
-        self.timeout_interval = timeout_interval
         self.timeout_default = timeout_default
-        self.timeout_dispatch_thread_size = timeout_dispatch_thread_size
         self.remote_addr = remote_addr
         self.remote_port = remote_port
+        self.packet_dispatch_thread_size = packet_dispatch_thread_size
+        self.coder = coder
+        self.socket_factory = socket_factory
 
 
 class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
-    config: DuckRpcClientConfig
-    context: DuckRpcContext
-    socket_event_dispatch: DuckSocketEventDispatch
     logger: logging.Logger
     _origin_logger: logging.Logger
+    config: DuckRpcClientConfig
+    socket_event_dispatch: DuckSocketEventDispatch
+    socket_sender: DuckSocketSender
+    packet_dispatch_executor: ThreadPoolExecutor
+
     _shutdown_flag: bool
     _conn_pool: DuckPool
-    _read_selector: selectors.DefaultSelector
-    _read_executor: ThreadPoolExecutor
     _sender: DuckSocketSender
     _reply_map: dict[str, ReplyItem]
 
     def __init__(self,
                  config: DuckRpcClientConfig = None,
-                 context: DuckRpcContext = None,
-                 socket_event_dispatch: DuckSocketEventDispatch=None,
+                 event_config: DuckSocketEventDispatchConfig = None,
                  logger=None):
-        self.config = config
-        self.context = context
-        self.socket_event_dispatch = socket_event_dispatch
         if logger is None:
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
         self._origin_logger = logger
-
+        self.config = config
+        self.socket_event_dispatch = DuckSocketEventDispatch(config=event_config, logger=logger)
+        self.socket_sender = DuckSocketSender(coder=self.config.coder, logger=logger)
+        self.packet_dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"packet-dispatch-{self.config.name}",
+                                                           max_workers=self.config.packet_dispatch_thread_size)
         self._shutdown_flag = False
         pool_config = DuckPoolConfig(name=self.config.name,
                                      core_size=self.config.core_conn_size,
@@ -101,22 +103,22 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         self._conn_pool = DuckPool(config=pool_config, factory=self, logger=logger)
 
     def create(self) -> DuckSocketWrap:
-        sock = self.context.socket_factory.create()
+        sock = self.config.socket_factory.create()
         self.logger.info(f" {sock} connect remote {self.config.remote_addr}  {self.config.remote_port}")
         sock.connect((self.config.remote_addr, self.config.remote_port))
         sock.setblocking(False)
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_dispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
-                                             coder=self.context.coder,
+                                             coder=self.config.coder,
                                              dispatch_handler=self,
-                                             dispatch_executor=self.context.dispatch_packet_executor,
+                                             dispatch_executor=self.packet_dispatch_executor,
                                              logger=self._origin_logger)
         self.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_dispatch)
         return socket_wrap
 
     def destroy(self, socket_wrap: DuckSocketWrap) -> None:
         self.socket_event_dispatch.unregister(socket_wrap.sock)
-        self.context.socket_factory.destroy(socket_wrap.sock)
+        self.config.socket_factory.destroy(socket_wrap.sock)
 
     def rpc(self, body: any, timeout=None) -> any:
         if timeout is None:
@@ -126,12 +128,13 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         socket_wrap = self._conn_pool.check_out(timeout=timeout)
         packet = self._build_packet(body=body)
         self.logger.debug(f"rpc start, {packet.iid} {packet.body}")
-        self.context.socket_sender.send(socket_wrap=socket_wrap, packet=packet)
+        self.socket_sender.send(socket_wrap=socket_wrap, packet=packet)
         self._conn_pool.check_in(socket_wrap)
 
         reply_item = ReplyItem(iid=packet.iid)
         self._reply_map[packet.iid] = reply_item
         timeout = max(0, timeout - time.time() + start)
+
         def pred():
             return reply_item.reply
 

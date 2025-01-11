@@ -8,9 +8,7 @@ from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
-from duckrpc.duck_rpc_context import DuckRpcContext
-from duckrpc.duck_socket_send import DuckSocketSender
-from duckrpc.duck_socket_event import DuckSocketEventDispatch
+from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig
 from echo_socket_server import EchoSocketServer
 
 logging.basicConfig(stream=sys.stdout,
@@ -50,33 +48,24 @@ BIND_PORT = 30080
 BACKLOG = 10
 
 
-def build_context() -> DuckRpcContext:
-    coder = EchoCoder()
-    sender = DuckSocketSender(coder=coder)
-
-    return DuckRpcContext(dispatch_packet_thread_size=4,
-                          coder=coder,
-                          socket_factory=EchoSocketFactory(),
-                          socket_sender=sender)
-
-
 def build_rpc_server():
     return EchoSocketServer(port=BIND_PORT)
 
 
-def build_rpc_client(context: DuckRpcContext):
+def build_rpc_client():
     config: DuckRpcClientConfig = DuckRpcClientConfig(
         name="rpc_client",
         core_conn_size=1,
         max_conn_size=1,
         timeout_default=600,
-        timeout_interval=60,
-        timeout_dispatch_thread_size=1,
         remote_addr=BIND_ADDR,
-        remote_port=BIND_PORT
+        remote_port=BIND_PORT,
+        packet_dispatch_thread_size=1,
+        coder=EchoCoder(),
+        socket_factory=DuckSocketFactory()
     )
-    event_dispatch = DuckSocketEventDispatch(select_timeout=1, dispatch_thread_size=1)
-    return DuckRpcClient(config=config, context=context, socket_event_dispatch=event_dispatch)
+    event_config = DuckSocketEventDispatchConfig(select_timeout=1.0, dispatch_thread_size=1)
+    return DuckRpcClient(config=config, event_config=event_config)
 
 
 class EchoClientTest(unittest.TestCase):
@@ -86,9 +75,7 @@ class EchoClientTest(unittest.TestCase):
         logging.info("setUpClass {}".format(cls))
         cls.rpc_server = build_rpc_server()
         cls.rpc_server.start()
-        ctx = build_context()
-
-        cls.rpc_client = build_rpc_client(context=ctx)
+        cls.rpc_client = build_rpc_client()
 
     @classmethod
     def tearDownClass(cls):

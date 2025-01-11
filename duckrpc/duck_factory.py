@@ -29,3 +29,4 @@ class DuckSocketFactory(DuckFactory):
 
     def destroy(self, sock: socket.socket) -> None:
         logging.debug("destroy {sock}")
+        sock.close()
