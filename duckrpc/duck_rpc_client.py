@@ -56,7 +56,7 @@ class DuckRpcClientConfig(object):
                  remote_port=0,
                  packet_dispatch_thread_size=PACKET_DISPATCH_THREAD_SIZE_DEFAULT,
                  coder: DuckCoder = DefaultDuckCoder(),
-                 socket_factory: DuckFactory = DuckSocketFactory()):
+                 socket_factory: DuckSocketFactory = DuckSocketFactory()):
         self.name = name
         self.core_conn_size = core_conn_size
         self.max_conn_size = max_conn_size
@@ -159,9 +159,10 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
             reply_item.reply = packet.body
             reply_item.cond.notify()
 
-    def dispatch_socket_close(self, recv: DuckSocketReceiver):
-        self.logger.info(f"socket {recv.socket_wrap.sock} closed")
-        self.destroy(recv.socket_wrap)
+    def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
+        self.logger.info(f"socket {socket_wrap.sock} closed")
+        self.destroy(socket_wrap)
+        # TODO: remote from pool
 
     def shutdown(self):
         self._shutdown_flag = True

@@ -27,7 +27,7 @@ class DuckRpcServerConfig(object):
     backlog: int
     packet_dispatch_thread_size: int
     coder: DuckCoder
-    socket_factory: DuckFactory
+    socket_factory: DuckSocketFactory
 
     def __init__(self,
                  name="",
@@ -38,7 +38,7 @@ class DuckRpcServerConfig(object):
                  event_dispatch_thread_size=EVENT_DISPATCH_THREAD_SIZE_DEFAULT,
                  packet_dispatch_thread_size=PACKET_DISPATCH_THREAD_SIZE_DEFAULT,
                  coder: DuckCoder = DefaultDuckCoder(),
-                 socket_factory: DuckFactory = DuckSocketFactory()
+                 socket_factory: DuckSocketFactory = DuckSocketFactory()
                  ):
         self.name = name
         self.bind_addr = bind_addr
@@ -119,6 +119,7 @@ class DuckRpcServer(DuckSocketDispatchHandler):
 
     def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
         self.socket_event_dispatch.unregister(socket_wrap.sock)
+        socket_wrap.sock.close()
 
     def shutdown(self):
         if self._sock is not None:
