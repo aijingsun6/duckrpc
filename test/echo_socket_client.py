@@ -5,6 +5,7 @@ from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_socket_send import DuckSocketSender
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_socket_wrap import DuckSocketWrap
+from duckrpc.duck_socket_recv import DuckSocketReceiver
 import socket
 
 
@@ -29,10 +30,12 @@ class EchoSocketClient(object):
         packet = DuckPacket(name="echo-socket-client", iid=str(uuid.uuid4()), body=value)
         socket_wrap = DuckSocketWrap(sock=self._sock)
         self.socket_sender.send(socket_wrap, packet)
-        size = len(self.socket_sender.coder.encode_packet(packet))
-        data = self._sock.recv(1000)
+
+        recv:DuckSocketReceiver = DuckSocketReceiver(socket_wrap=socket_wrap)
+        recv.recv()# read head
+        _, data = recv.recv()
         self.logger.info(f"{data}")
-        recv:DuckPacket = self.socket_sender.coder.decode_packet(data[4:])
+        recv:DuckPacket = self.socket_sender.coder.decode_packet(data)
         self.logger.info(f"{recv}")
         return recv.body
 
