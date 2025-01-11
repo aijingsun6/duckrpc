@@ -30,9 +30,11 @@ class EchoSocketClient(object):
         socket_wrap = DuckSocketWrap(sock=self._sock)
         self.socket_sender.send(socket_wrap, packet)
         size = len(self.socket_sender.coder.encode_packet(packet))
-        data = self._sock.recv(size)
-        recv = self.socket_sender.coder.decode_packet(data)
+        data = self._sock.recv(1000)
+        self.logger.info(f"{data}")
+        recv:DuckPacket = self.socket_sender.coder.decode_packet(data[4:])
         self.logger.info(f"{recv}")
+        return recv.body
 
     def shutdown(self):
         self._sock.close()
