@@ -46,14 +46,16 @@ class DuckSocketDispatch(DuckSocketEventHandler):
         result, data = self.recv.recv()
         if result == RecvResult.SOCKET_CLOSED:
             self.logger.debug(f"dispatch socket close {fileobj}")
-            self.socket_dispatch_handler.dispatch_socket_close(self.recv.socket_wrap)
-            # TODO:
-            # self.dispatch_executor.submit(self.socket_dispatch_handler.dispatch_socket_close, self.recv.socket_wrap)
+            if self.dispatch_executor is None:
+                self.socket_dispatch_handler.dispatch_socket_close(self.recv.socket_wrap)
+            else:
+                self.dispatch_executor.submit(self.socket_dispatch_handler.dispatch_socket_close, self.recv.socket_wrap)
 
         if data is not None:
-            self.dispatch_data(data)
-            # TODO:
-            # self.dispatch_executor.submit(self.dispatch_data, data)
+            if self.dispatch_executor is None:
+                self.dispatch_data(data)
+            else:
+                self.dispatch_executor.submit(self.dispatch_data, data)
 
     def dispatch_data(self, data: bytes):
         packet = self.coder.decode_packet(data)

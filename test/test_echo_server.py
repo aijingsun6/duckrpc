@@ -3,6 +3,7 @@ import socket
 import unittest
 import logging
 import sys
+import time
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
@@ -95,7 +96,10 @@ class EchoServerTest(unittest.TestCase):
 
     def test_simple(self):
         req = "hello"
+        start = time.time()
         res = self.rpc_client.rpc(req)
+        cost = time.time() - start
+        logger.info(f"rpc with code {cost}")
         self.assertEqual(req, res)
 
 
