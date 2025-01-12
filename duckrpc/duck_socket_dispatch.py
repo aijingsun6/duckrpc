@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 import logging
+import traceback
 
 from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
@@ -57,7 +58,11 @@ class DuckSocketDispatch(DuckSocketEventHandler):
     def dispatch_data(self, data: bytes):
         packet = self.coder.decode_packet(data)
         self.logger.debug(f"dispatch packet {packet}")
-        self.socket_dispatch_handler.dispatch_packet(self.recv.socket_wrap, packet)
+        try:
+            self.socket_dispatch_handler.dispatch_packet(self.recv.socket_wrap, packet)
+        except Exception as exp:
+            self.logger.error(f"dispatch_data failed with {exp}, trace: {traceback.format_exc()}")
+            self.socket_dispatch_handler.dispatch_socket_close(self.recv.socket_wrap)
 
     def shutdown(self):
         self.dispatch_executor.shutdown()

@@ -6,7 +6,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 
-from .duck_factory import DuckSocketFactory, DuckFactory
+from .duck_factory import DuckSocketFactory
 from .duck_coder import DuckCoder,DefaultDuckCoder
 from .duck_packet import DuckPacket
 from .duck_socket_send import DuckSocketSender
