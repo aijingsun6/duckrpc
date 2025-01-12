@@ -82,7 +82,20 @@ class DuckPool(object):
 
         if timeout is not None and not isinstance(timeout, (int, float)):
             raise ValueError("timeout must be one of None,int,float")
+        timeout_at = None
+        if timeout is not None:
+            timeout_at = time.time() + timeout
+        while True:
+            self.logger.debug(f"check_out start with timeout_at = {timeout_at}")
+            item = self.do_check_out(timeout_at=timeout_at)
+            if item in self._all_set:
+                self.logger.debug(f"check_out {item}")
+                return item
+            else:
+                self.logger.debug(f"{item} has removed.")
 
+
+    def do_check_out(self, timeout_at: Union[None, int, float] = None):
         try:
             conn = self._idle_queue.get_nowait()
             if conn in self._all_set:
@@ -97,19 +110,14 @@ class DuckPool(object):
                 self._all_set.add(conn)
                 logging.debug("check_out {}".format(conn))
                 return conn
-        timeout_at = None
-        if timeout is not None:
-            timeout_at = time.time() + timeout
-        while True:
-            try:
-                if timeout_at is not None:
-                    timeout = timeout_at - time.time()
-                item = self._idle_queue.get(timeout=timeout)
-                if item in self._all_set:
-                    logging.debug("check_out {}".format(item))
-                    return item
-            except:
-                raise
+        try:
+            timeout = None
+            if timeout_at is not None:
+                timeout = timeout_at - time.time()
+            self.logger.debug(f"check_out with timeout={timeout}")
+            return self._idle_queue.get(timeout=timeout)
+        except:
+            raise
 
     def shutdown(self):
         logging.debug("shutdown...")

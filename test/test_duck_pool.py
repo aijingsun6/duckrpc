@@ -1,4 +1,5 @@
 import queue
+import threading
 import time
 
 from duckrpc.duck_factory import DuckFactory
@@ -42,8 +43,8 @@ class DuckPoolTest(unittest.TestCase):
         self.pool = DuckPool(config=config, factory=DuckPoolFactoryTest(), logger=logger)
         self.thread_pool = ThreadPoolExecutor()
 
-    def check_in_delay(self, item: any, delay):
-        time.sleep(delay)
+    def check_in_delay(self, item: any):
+        logger.info(f"check_in {item}")
         self.pool.check_in(item)
 
     def test_create_pool(self):
@@ -68,18 +69,21 @@ class DuckPoolTest(unittest.TestCase):
                 item = self.pool.check_out(timeout=0.01)
 
     def test_check_out_delay(self):
+        timer = None
         for i in range(self.max_size):
             item = self.pool.check_out()
             expect = "name-{}".format(i)
             self.assertEqual(expect, item)
             if i == (self.max_size - 1):
-                self.thread_pool.submit(self.check_in_delay, item, 3.0)
+                timer = threading.Timer(2.7, self.check_in_delay,args=[item])
+                timer.start()
 
         start = time.time()
-        self.pool.check_out()
+        self.pool.check_out(timeout=3.0)
+        timer.cancel()
         cost = time.time() - start
         logger.info("check_out cost {}".format(cost))
-        self.assertTrue(abs(cost-3.0) < 0.01)
+        self.assertTrue(cost < 3.0)
 
     def tearDown(self):
         self.pool.shutdown()

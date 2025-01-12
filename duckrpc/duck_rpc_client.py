@@ -161,8 +161,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
 
     def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
         self.logger.info(f"socket {socket_wrap.sock} closed")
-        self.destroy(socket_wrap)
-        # TODO: remote from pool
+        self._conn_pool.remove_item(socket_wrap)
 
     def shutdown(self):
         self._shutdown_flag = True
