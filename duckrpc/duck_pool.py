@@ -1,4 +1,5 @@
 import queue
+from enum import Enum
 from queue import Queue
 import threading
 import logging
@@ -23,12 +24,16 @@ class DuckPoolConfig(object):
         self.core_size = core_size
         self.max_size = max_size
 
+class ItemStatus(Enum):
+    IDLE = "IDLE"
+    ACTIVE = "ACTIVE"
 
 class DuckPool(object):
     config: DuckPoolConfig
     factory: DuckFactory
     logger: logging.Logger
-    _all_set: set[any]
+    _all_status: dict[any, ItemStatus]
+
     _idle_queue: Queue[any]
     _lock: threading.Lock
     _count: int
@@ -41,7 +46,7 @@ class DuckPool(object):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self._all_set = set()
+        self._all_status = dict()
         self._idle_queue = Queue()
         self._count = 0
         self._lock = threading.Lock()
@@ -51,7 +56,7 @@ class DuckPool(object):
     def _build_core_items(self):
         for _ in range(self.config.core_size):
             conn = self._create_item()
-            self._all_set.add(conn)
+            self._all_status[conn] = ItemStatus.IDLE
             self._idle_queue.put(conn)
 
     def _create_item(self) -> any:
@@ -63,10 +68,10 @@ class DuckPool(object):
     def remove_item(self, item: any) -> None:
         if self._shutdown_flag:
             raise RuntimeError("pool has shutdown.")
-        if item in self._all_set:
-            with self._lock:
+        with self._lock:
+            if item in self._all_status:
                 logging.debug("remote_item {}".format(item))
-                self._all_set.remove(item)
+                del self._all_status[item]
                 self._count -= 1
                 self.factory.destroy(item)
 
@@ -74,7 +79,12 @@ class DuckPool(object):
         if self._shutdown_flag:
             raise RuntimeError("pool has shutdown.")
         logging.debug("check_in {}".format(item))
-        self._idle_queue.put(item)
+        with self._lock:
+            if item in self._all_status and self._all_status[item] == ItemStatus.ACTIVE:
+                self._idle_queue.put(item)
+                self._all_status[item] = ItemStatus.IDLE
+            else:
+                self.logger.info(f"check_in {item} not valid.")
 
     def check_out(self, timeout: Union[None, int, float] = None) -> Optional[any]:
         if self._shutdown_flag:
@@ -88,8 +98,9 @@ class DuckPool(object):
         while True:
             self.logger.debug(f"check_out start with timeout_at = {timeout_at}")
             item = self.do_check_out(timeout_at=timeout_at)
-            if item in self._all_set:
+            if item in self._all_status and self._all_status[item] == ItemStatus.IDLE:
                 self.logger.debug(f"check_out {item}")
+                self._all_status[item] = ItemStatus.ACTIVE
                 return item
             else:
                 self.logger.debug(f"{item} has removed.")
@@ -97,19 +108,18 @@ class DuckPool(object):
 
     def do_check_out(self, timeout_at: Union[None, int, float] = None):
         try:
-            conn = self._idle_queue.get_nowait()
-            if conn in self._all_set:
-                logging.debug("check_out {}".format(conn))
-                return conn
+            item = self._idle_queue.get_nowait()
+            if item is not None:
+                return item
         except queue.Empty:
             pass
 
         with self._lock:
             if self._count < self.config.max_size:
-                conn = self._create_item()
-                self._all_set.add(conn)
-                logging.debug("check_out {}".format(conn))
-                return conn
+                item = self._create_item()
+                self._all_status[item] = ItemStatus.IDLE
+                logging.debug("check_out {}".format(item))
+                return item
         try:
             timeout = None
             if timeout_at is not None:
@@ -122,5 +132,5 @@ class DuckPool(object):
     def shutdown(self):
         logging.debug("shutdown...")
         self._shutdown_flag = True
-        for e in self._all_set:
+        for e in self._all_status:
             self.factory.destroy(e)

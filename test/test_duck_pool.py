@@ -49,7 +49,7 @@ class DuckPoolTest(unittest.TestCase):
 
     def test_create_pool(self):
         self.assertEqual(self.pool._idle_queue.qsize(), self.core_size)
-        self.assertEqual(len(self.pool._all_set), self.core_size)
+        self.assertEqual(len(self.pool._all_status), self.core_size)
 
     def test_check_out_core(self):
         for i in range(100):
