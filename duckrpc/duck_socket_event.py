@@ -15,6 +15,7 @@ DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 class EventDispatchMode(EnumType):
     THREAD = "THREAD"
     ASYNCIO = "ASYNCIO"
+    SINGLE = "SINGLE"  # dispatch with select thread
 
 
 class DuckSocketEventHandler(ABC):
@@ -83,16 +84,17 @@ class DuckSocketEventDispatch(object):
             self.logger.debug(f"select end, events: {len(events)}")
             if len(events) < 1:
                 continue
-            for key, mask in events:
-                handler: DuckSocketEventHandler = key.data
-                handler.handle_event(key.fileobj, mask=mask)
-            # q = queue.Queue()
-            # for recv in events:
-            #    q.put(recv)
-            #    self.dispatch_executor.submit(self._dispatch, q)
-            # q.join()
+            if self.config.dispatch_mode == EventDispatchMode.SINGLE:
+                self.dispatch_with_single(events=events)
+            elif self.config.dispatch_mode == EventDispatchMode.THREAD:
+                self.dispatch_with_thread(events=events)
 
-    def _dispatch(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
+    def dispatch_with_single(self, events):
+        for key, mask in events:
+            handler: DuckSocketEventHandler = key.data
+            handler.handle_event(key.fileobj, mask=mask)
+
+    def _do_dispatch_with_thread(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
         event: tuple[selectors.SelectorKey, int] = q.get()
         try:
             fileobj = event[0].fileobj
@@ -100,10 +102,17 @@ class DuckSocketEventDispatch(object):
             handle: DuckSocketEventHandler = event[0].data
             self.logger.debug(f"dispatch {fileobj}")
             handle.handle_event(fileobj=fileobj, mask=mask)
-        except:
-            self.logger.error(f"{traceback.format_exc()}")
+        except Exception as exp:
+            self.logger.error(f"handle_event failed with {exp}, stack:{traceback.format_exc()}")
         finally:
             q.task_done()
+
+    def dispatch_with_thread(self, events):
+        q = queue.Queue()
+        for recv in events:
+            q.put(recv)
+            self.dispatch_executor.submit(self._do_dispatch_with_thread, q)
+        q.join()
 
     def register(self, fileobj, events, data: DuckSocketEventHandler = None):
         self.logger.debug(f"register {fileobj} {data}")
