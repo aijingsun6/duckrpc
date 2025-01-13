@@ -16,7 +16,7 @@ from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 
 logging.basicConfig(stream=sys.stdout,
                     level=logging.INFO,
-                    format="%(asctime)s %(message)s")
+                    format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -130,10 +130,9 @@ def bench(event_thread_size, packet_thread_size, rpc_thread_size, total_req):
     logger.info("------ dispatch thread info -------")
     logger.info(f"event:{event_thread_size}, packet:{packet_thread_size}, rpc:{rpc_thread_size}, num: {n}")
     logger.info(f"total:{cost}, qps: {n/cost}, avg:{cost_total / n}, max:{cost_max}, min:{cost_min}")
+    executor.shutdown()
     rpc_client.shutdown()
     rpc_server.shutdown()
-    executor.shutdown()
-
 
 class BenchRpcServerTest(unittest.TestCase):
 

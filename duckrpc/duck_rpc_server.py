@@ -1,5 +1,6 @@
 import selectors
 import socket
+import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from dataclasses import dataclass
 import logging
@@ -7,7 +8,7 @@ import os
 from abc import ABC, abstractmethod
 
 from .duck_factory import DuckSocketFactory
-from .duck_coder import DuckCoder,DefaultDuckCoder
+from .duck_coder import DuckCoder, DefaultDuckCoder
 from .duck_packet import DuckPacket
 from .duck_socket_send import DuckSocketSender
 from .duck_socket_wrap import DuckSocketWrap
@@ -75,6 +76,7 @@ class DuckRpcServer(DuckSocketDispatchHandler):
     logger: logging.Logger
     origin_logger: logging.Logger
     _sock: socket.socket
+    _shutdown_flag: bool = False
 
     def __init__(self,
                  config: DuckRpcServerConfig,
@@ -88,14 +90,14 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         self.origin_logger = logger
         self.config = config
         self.handler = handler
-        self.socket_sender = DuckSocketSender(coder=self.config.coder,logger=logger)
+        self.socket_sender = DuckSocketSender(coder=self.config.coder, logger=logger)
         self.socket_event_dispatch = DuckSocketEventDispatch(config=event_config, logger=logger)
         self.packet_dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"packet-dispatch-{self.config.name}",
                                                            max_workers=self.config.packet_dispatch_thread_size)
 
         self._shutdown_flag = False
 
-    def start(self) -> None:
+    def start(self, block=False) -> None:
         sock = self.config.socket_factory.create()
         bind_tuple = (self.config.bind_addr, self.config.bind_port)
         sock.bind(bind_tuple)
@@ -110,8 +112,12 @@ class DuckRpcServer(DuckSocketDispatchHandler):
                                                            socket_event_dispatch=self.socket_event_dispatch,
                                                            dispatch_handler=self,
                                                            dispatch_executor=self.packet_dispatch_executor,
-                                                           logger = self.origin_logger)
+                                                           logger=self.origin_logger)
         self.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_accept)
+        self._shutdown_flag = False
+        if block:
+            while not self._shutdown_flag:
+                time.sleep(1)
 
     def dispatch_packet(self, socket_wrap: DuckSocketWrap, packet: DuckPacket) -> None:
         result = self.handler.handle_body(packet.body)
