@@ -15,7 +15,7 @@ from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig, EventDispat
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 
 logging.basicConfig(stream=sys.stdout,
-                    level=logging.INFO,
+                    level=logging.WARNING,
                     format="%(message)s")
 logger = logging.getLogger(__name__)
 
@@ -67,11 +67,11 @@ def build_rpc_server(event_dispatch_thread_size=4, packet_dispatch_thread_size=4
     return DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 
 
-def build_rpc_client(event_dispatch_thread_size=4, packet_dispatch_thread_size=4):
+def build_rpc_client(event_dispatch_thread_size=4, packet_dispatch_thread_size=4, core_conn_size=1, max_conn_size=1):
     config: DuckRpcClientConfig = DuckRpcClientConfig(
         name="rpc_client",
-        core_conn_size=1,
-        max_conn_size=1,
+        core_conn_size=core_conn_size,
+        max_conn_size=max_conn_size,
         timeout_default=600,
         remote_addr=BIND_ADDR,
         remote_port=BIND_PORT,
@@ -87,17 +87,19 @@ def rpc_one(rpc_client: DuckRpcClient, q: queue.Queue):
     q.get()
     start = time.time()
     rpc_client.rpc("hello")
-    q.task_done()
     end = time.time()
+    q.task_done()
     return end - start
 
 
-def bench(event_thread_size, packet_thread_size, rpc_thread_size, total_req):
+def bench(event_thread_size, packet_thread_size, core_conn_size, max_conn_size, rpc_thread_size, total_req):
     rpc_server: DuckRpcServer = build_rpc_server(event_dispatch_thread_size=event_thread_size,
                                                  packet_dispatch_thread_size=packet_thread_size)
     rpc_server.start()
     rpc_client: DuckRpcClient = build_rpc_client(event_dispatch_thread_size=event_thread_size,
-                                                 packet_dispatch_thread_size=packet_thread_size)
+                                                 packet_dispatch_thread_size=packet_thread_size,
+                                                 core_conn_size=core_conn_size,
+                                                 max_conn_size=max_conn_size)
 
     executor = ThreadPoolExecutor(max_workers=rpc_thread_size)
     q = queue.Queue()
@@ -111,6 +113,8 @@ def bench(event_thread_size, packet_thread_size, rpc_thread_size, total_req):
         fu_acc.append(f)
 
     q.join()
+
+
     cost = time.time() - start
 
     cost_max = None
@@ -127,32 +131,40 @@ def bench(event_thread_size, packet_thread_size, rpc_thread_size, total_req):
             cost_min = r
         else:
             cost_min = min(cost_min, r)
-    logger.info("------ dispatch thread info -------")
-    logger.info(f"event:{event_thread_size}, packet:{packet_thread_size}, rpc:{rpc_thread_size}, num: {n}")
-    logger.info(f"total:{cost}, qps: {n/cost}, avg:{cost_total / n}, max:{cost_max}, min:{cost_min}")
+    logger.warning("------ bench mark info -------")
+    logger.warning(f"event:{event_thread_size}, packet:{packet_thread_size}, rpc:{rpc_thread_size}")
+    logger.warning(f"core_conn_size:{core_conn_size}, max_conn_size: {max_conn_size}")
+    logger.warning(f"total:{n}, qps: {n / cost}, avg:{cost_total / n}, max:{cost_max}, min:{cost_min}")
     executor.shutdown()
     rpc_client.shutdown()
     rpc_server.shutdown()
 
+
 class BenchRpcServerTest(unittest.TestCase):
 
-    def test_bench_4_4_4_100(self):
-        bench(4, 4, 4, 100)
+    def test_bench_4_4_1_1_4_100(self):
+        bench(4, 4, 1, 1, 4, 100)
 
-    def test_bench_4_4_4_1000(self):
-        bench(4, 4, 4, 1000)
+    def test_bench_4_4_1_1_4_1000(self):
+        bench(4, 4, 1, 1, 4, 1000)
 
-    def test_bench_4_4_4_10000(self):
-        bench(4, 4, 4, 10000)
+    def test_bench_4_4_1_1_4_10000(self):
+        bench(4, 4, 1, 1, 4, 10000)
 
-    def test_bench_4_4_8_1000(self):
-        bench(4, 4, 8, 1000)
+    def test_bench_4_4_1_1_8_1000(self):
+        bench(4, 4, 1, 1, 8, 1000)
 
-    def test_bench_8_8_8_1000(self):
-        bench(8, 8, 8, 1000)
+    def test_bench_4_4_4_4_8_1000(self):
+        bench(4, 4, 4, 4, 8, 1000)
 
-    def test_bench_8_8_8_10000(self):
-        bench(8, 8, 8, 10000)
+    def test_bench_4_4_4_4_8_10000(self):
+        bench(4, 4, 4, 4, 8, 10000)
+
+    def test_bench_8_8_8_8_8_10000(self):
+        bench(8, 8, 8, 8, 8, 10000)
+
+    def test_bench_16_16_16_16_16_10000(self):
+        bench(16, 16, 16, 16, 16, 10000)
 
 
 if __name__ == '__main__':
