@@ -102,6 +102,7 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         logging.info("start rpc server, sock={}, bind={}".format(sock, bind_tuple))
         sock.listen(self.config.backlog)
         sock.setblocking(False)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock = sock
         socket_wrap = DuckSocketWrap(sock=sock)
         socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
