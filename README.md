@@ -113,34 +113,10 @@ reply = rpc_client.rpc(req=...)
 ## 3. bench mark
 see ``` test_bench_rpc_server.py ```
 ```
------- dispatch thread info -------
-event:4, packet:4, rpc:4, num: 100
-total:0.13124990463256836, qps: 761.9053155120235, avg:0.005098330974578858, max:0.009862899780273438, min:0.0025680065155029297
-start rpc server, sock=<socket.socket fd=6, family=2, type=1, proto=0, laddr=('127.0.0.1', 30080)>, bind=('127.0.0.1', 30080)
- <socket.socket fd=10, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)> connect remote 127.0.0.1  30080
------- dispatch thread info -------
-event:4, packet:4, rpc:4, num: 1000
-total:1.063072919845581, qps: 940.6692441617807, avg:0.004234939098358154, max:0.03983783721923828, min:0.002289295196533203
-start rpc server, sock=<socket.socket fd=6, family=2, type=1, proto=0, laddr=('127.0.0.1', 30080)>, bind=('127.0.0.1', 30080)
- <socket.socket fd=10, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)> connect remote 127.0.0.1  30080
------- dispatch thread info -------
-event:4, packet:4, rpc:4, num: 10000
-total:11.97170090675354, qps: 835.3031935803497, avg:0.004775405097007752, max:0.2888331413269043, min:0.0020918846130371094
-start rpc server, sock=<socket.socket fd=6, family=2, type=1, proto=0, laddr=('127.0.0.1', 30080)>, bind=('127.0.0.1', 30080)
- <socket.socket fd=10, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)> connect remote 127.0.0.1  30080
------- dispatch thread info -------
-event:4, packet:4, rpc:8, num: 1000
-total:0.8520209789276123, qps: 1173.6800204833453, avg:0.006767379999160767, max:0.028744935989379883, min:0.00479578971862793
-start rpc server, sock=<socket.socket fd=6, family=2, type=1, proto=0, laddr=('127.0.0.1', 30080)>, bind=('127.0.0.1', 30080)
- <socket.socket fd=10, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)> connect remote 127.0.0.1  30080
------- dispatch thread info -------
-event:8, packet:8, rpc:8, num: 1000
-total:0.8631699085235596, qps: 1158.5204606014202, avg:0.006850845098495483, max:0.027443885803222656, min:0.004606962203979492
-start rpc server, sock=<socket.socket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 30080)>, bind=('127.0.0.1', 30080)
- <socket.socket fd=12, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)> connect remote 127.0.0.1  30080
------- dispatch thread info -------
-event:8, packet:8, rpc:8, num: 10000
-total:8.435243844985962, qps: 1185.502183904755, avg:0.006735598921775818, max:0.12670493125915527, min:0.0047130584716796875
+------ bench mark info -------
+event:8, packet:8, rpc:8
+core_conn_size:8, max_conn_size: 8
+total:10000, qps: 1182.4083359553138, avg:0.00675000057220459, max:0.12443304061889648, min:0.0029528141021728516
 
 ```
 
