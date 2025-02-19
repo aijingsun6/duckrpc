@@ -10,8 +10,7 @@ from abc import ABC, abstractmethod
 from .duck_factory import DuckSocketFactory
 from .duck_coder import DuckCoder, DefaultDuckCoder
 from .duck_packet import DuckPacket
-from .duck_socket_send import DuckSocketSender
-from .duck_socket_wrap import DuckSocketWrap
+from .duck_socket import DuckSocket
 from .duck_socket_accept import DuckSocketAccept
 from .duck_socket_dispatch import DuckSocketDispatchHandler
 from .duck_socket_event_dispatch import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
@@ -66,7 +65,6 @@ class DuckRpcServer(DuckSocketDispatchHandler):
     config: DuckRpcServerConfig
     socket_event_dispatch: DuckSocketEventDispatch
     handler: DuckRpcBodyHandler
-    socket_sender: DuckSocketSender
     packet_dispatch_executor: ThreadPoolExecutor
 
     logger: logging.Logger
@@ -86,7 +84,6 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         self.origin_logger = logger
         self.config = config
         self.handler = handler
-        self.socket_sender = DuckSocketSender(coder=self.config.coder, logger=logger)
         self.socket_event_dispatch = DuckSocketEventDispatch(config=event_config, logger=logger)
         self.packet_dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"packet-dispatch-{self.config.name}",
                                                            max_workers=self.config.packet_dispatch_thread_size)
@@ -102,7 +99,7 @@ class DuckRpcServer(DuckSocketDispatchHandler):
         sock.setblocking(False)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock = sock
-        socket_wrap = DuckSocketWrap(sock=sock)
+        socket_wrap = DuckSocket(sock=sock)
         socket_accept: DuckSocketAccept = DuckSocketAccept(socket_wrap=socket_wrap,
                                                            coder=self.config.coder,
                                                            socket_event_dispatch=self.socket_event_dispatch,
@@ -115,12 +112,12 @@ class DuckRpcServer(DuckSocketDispatchHandler):
             while not self._shutdown_flag:
                 time.sleep(1)
 
-    def dispatch_packet(self, socket_wrap: DuckSocketWrap, packet: DuckPacket) -> None:
+    def dispatch_packet(self, socket_wrap: DuckSocket, packet: DuckPacket) -> None:
         result = self.handler.handle_body(packet.body)
         packet.body = result
-        self.socket_sender.send(socket_wrap, packet=packet)
+        socket_wrap.send(self.config.coder.encode_packet(packet))
 
-    def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
+    def dispatch_socket_close(self, socket_wrap: DuckSocket):
         self.socket_event_dispatch.unregister(socket_wrap.sock)
         socket_wrap.sock.close()
 

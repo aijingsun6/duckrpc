@@ -2,14 +2,14 @@ import selectors
 import logging
 from concurrent.futures.thread import ThreadPoolExecutor
 
-from .duck_socket_wrap import DuckSocketWrap
+from .duck_socket import DuckSocket
 from .duck_coder import DuckCoder
 from .duck_socket_event_dispatch import DuckSocketEventHandler, DuckSocketEventDispatch
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 
 
 class DuckSocketAccept(DuckSocketEventHandler):
-    socket_wrap: DuckSocketWrap
+    socket_wrap: DuckSocket
     coder: DuckCoder
     socket_event_dispatch: DuckSocketEventDispatch
     dispatch_handler: DuckSocketDispatchHandler
@@ -18,7 +18,7 @@ class DuckSocketAccept(DuckSocketEventHandler):
     _origin_logger: logging.Logger
 
     def __init__(self,
-                 socket_wrap: DuckSocketWrap,
+                 socket_wrap: DuckSocket,
                  coder: DuckCoder,
                  socket_event_dispatch: DuckSocketEventDispatch,
                  dispatch_handler: DuckSocketDispatchHandler,
@@ -40,8 +40,8 @@ class DuckSocketAccept(DuckSocketEventHandler):
             sock, addr = self.socket_wrap.sock.accept()  # 应当已就绪
             sock.setblocking(False)
             self.logger.debug(f"accept {sock}")
-            socket_wrap: DuckSocketWrap = DuckSocketWrap(sock=sock)
-            dispatch: DuckSocketDispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
+            socket_wrap: DuckSocket = DuckSocket(sock=sock)
+            dispatch: DuckSocketDispatch = DuckSocketDispatch(sock=socket_wrap,
                                                               coder=self.coder,
                                                               dispatch_handler=self.dispatch_handler,
                                                               dispatch_executor=self.dispatch_executor,

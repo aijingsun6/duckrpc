@@ -8,7 +8,6 @@ from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_send import DuckSocketSender
 from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
 from echo_socket_client import EchoSocketClient
 
@@ -81,7 +80,7 @@ class EchoServerTest(unittest.TestCase):
         cls.rpc_server.start()
         coder = EchoCoder()
         cls.rpc_client = EchoSocketClient(socket_factory=EchoSocketFactory(),
-                                          socket_sender= DuckSocketSender(coder=coder),
+                                          coder=coder,
                                           port=BIND_PORT)
 
     @classmethod

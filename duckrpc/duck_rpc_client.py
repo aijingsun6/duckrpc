@@ -11,10 +11,8 @@ from .duck_coder import DuckCoder, DefaultDuckCoder
 from .duck_pool import DuckPool, DuckPoolConfig
 from .duck_factory import DuckFactory, DuckSocketFactory
 from .duck_packet import DuckPacket
-from .duck_socket_wrap import DuckSocketWrap
-from .duck_socket_send import DuckSocketSender
+from .duck_socket import DuckSocket
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
-from .duck_socket_recv import DuckSocketReceiver
 from .duck_socket_event_dispatch import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
 
 CORE_SIZE_DEFAULT = 8
@@ -73,12 +71,10 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
     _origin_logger: logging.Logger
     config: DuckRpcClientConfig
     socket_event_dispatch: DuckSocketEventDispatch
-    socket_sender: DuckSocketSender
     packet_dispatch_executor: ThreadPoolExecutor
 
     _shutdown_flag: bool
     _conn_pool: DuckPool
-    _sender: DuckSocketSender
     _reply_map: dict[str, ReplyItem]
 
     def __init__(self,
@@ -92,7 +88,6 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         self._origin_logger = logger
         self.config = config
         self.socket_event_dispatch = DuckSocketEventDispatch(config=event_config, logger=logger)
-        self.socket_sender = DuckSocketSender(coder=self.config.coder, logger=logger)
         self.packet_dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"packet-dispatch-{self.config.name}",
                                                            max_workers=self.config.packet_dispatch_thread_size)
         self._shutdown_flag = False
@@ -102,13 +97,13 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         self._reply_map = dict()
         self._conn_pool = DuckPool(config=pool_config, factory=self, logger=logger)
 
-    def create(self) -> DuckSocketWrap:
+    def create(self) -> DuckSocket:
         sock = self.config.socket_factory.create()
         self.logger.info(f" {sock} connect remote {self.config.remote_addr}  {self.config.remote_port}")
         sock.connect((self.config.remote_addr, self.config.remote_port))
         sock.setblocking(False)
-        socket_wrap = DuckSocketWrap(sock=sock)
-        socket_dispatch = DuckSocketDispatch(socket_wrap=socket_wrap,
+        socket_wrap = DuckSocket(sock=sock)
+        socket_dispatch = DuckSocketDispatch(sock=socket_wrap,
                                              coder=self.config.coder,
                                              dispatch_handler=self,
                                              dispatch_executor=self.packet_dispatch_executor,
@@ -116,7 +111,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         self.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_dispatch)
         return socket_wrap
 
-    def destroy(self, socket_wrap: DuckSocketWrap) -> None:
+    def destroy(self, socket_wrap: DuckSocket) -> None:
         self.socket_event_dispatch.unregister(socket_wrap.sock)
         self.config.socket_factory.destroy(socket_wrap.sock)
 
@@ -125,10 +120,10 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
             timeout = self.config.timeout_default
 
         start = time.time()
-        socket_wrap = self._conn_pool.check_out(timeout=timeout)
+        socket_wrap: DuckSocket = self._conn_pool.check_out(timeout=timeout)
         packet = self._build_packet(body=body)
         self.logger.debug(f"rpc start, {packet.iid} {packet.body}")
-        self.socket_sender.send(socket_wrap=socket_wrap, packet=packet)
+        socket_wrap.send(self.config.coder.encode_packet(packet=packet))
         self._conn_pool.check_in(socket_wrap)
 
         reply_item = ReplyItem(iid=packet.iid)
@@ -149,7 +144,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
                           iid=str(uuid.uuid4()),
                           body=body)
 
-    def dispatch_packet(self, recv: DuckSocketReceiver, packet: DuckPacket) -> None:
+    def dispatch_packet(self, sock: DuckSocket, packet: DuckPacket) -> None:
         iid = packet.iid
         if iid not in self._reply_map:
             return
@@ -159,7 +154,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
             reply_item.reply = packet.body
             reply_item.cond.notify()
 
-    def dispatch_socket_close(self, socket_wrap: DuckSocketWrap):
+    def dispatch_socket_close(self, socket_wrap: DuckSocket):
         self.logger.info(f"socket {socket_wrap.sock} closed")
         self._conn_pool.remove_item(socket_wrap)
 

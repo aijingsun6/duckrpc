@@ -35,7 +35,7 @@ class SimpleSocketFactory(DuckSocketFactory):
 
 ```python
 from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig, EventDispatchMode
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
 
@@ -63,8 +63,7 @@ config = DuckRpcServerConfig(
     socket_factory=socket_factory
 )
 event_config = DuckSocketEventDispatchConfig(select_timeout=0.2,
-                                             dispatch_thread_size=event_dispatch_thread_size,
-                                             dispatch_mode=EventDispatchMode.THREAD)
+                                             dispatch_thread_size=event_dispatch_thread_size)
 rpc_server = DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 rpc_server.start()
 ```
@@ -74,7 +73,7 @@ rpc_server.start()
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig, EventDispatchMode
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
 
 packet_dispatch_thread_size = 4
 event_dispatch_thread_size = 4
@@ -94,8 +93,7 @@ config: DuckRpcClientConfig = DuckRpcClientConfig(
     socket_factory=socket_factory
 )
 event_config = DuckSocketEventDispatchConfig(select_timeout=0.1,
-                                             dispatch_thread_size=event_dispatch_thread_size,
-                                             dispatch_mode=EventDispatchMode.THREAD)
+                                             dispatch_thread_size=event_dispatch_thread_size)
 rpc_client = DuckRpcClient(config=config, event_config=event_config)
 ```
 ### 1.1.4 rpc call
