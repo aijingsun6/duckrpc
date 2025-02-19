@@ -20,12 +20,15 @@ class DuckSocketEventHandler(ABC):
 
 
 class DuckSocketEventDispatchConfig(object):
+    name: str
     select_timeout: Union[int, float]
     dispatch_thread_size: int
 
     def __init__(self,
+                 name="",
                  select_timeout: Union[int, float] = SELECT_TIMEOUT_DEFAULT,
                  dispatch_thread_size: int = DISPATCH_THREAD_SIZE_DEFAULT):
+        self.name = name
         if select_timeout is None or select_timeout < 0:
             select_timeout = SELECT_TIMEOUT_DEFAULT
         self.select_timeout = select_timeout
@@ -55,9 +58,9 @@ class DuckSocketEventDispatch(object):
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
-        self.select_executor = ThreadPoolExecutor(thread_name_prefix="DuckSocketEventDispatch-select",
+        self.select_executor = ThreadPoolExecutor(thread_name_prefix=f"DuckSocketEventDispatch-{config.name}-select",
                                                   max_workers=1)
-        self.dispatch_executor = ThreadPoolExecutor(thread_name_prefix="DuckSocketEventDispatch-dispatch",
+        self.dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"DuckSocketEventDispatch-{config.name}-dispatch",
                                                     max_workers=self.config.dispatch_thread_size)
 
         self._shutdown_flag = False
