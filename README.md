@@ -32,16 +32,19 @@ class SimpleSocketFactory(DuckSocketFactory):
 
 
 ### 1.1.3 start rpc server
+
 ```python
 from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig, EventDispatchMode
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig, EventDispatchMode
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
+
 
 class EchoHandler(DuckRpcBodyHandler):
 
     def handle_body(self, body: any) -> any:
         return body
+
 
 bind_addr = "127.0.0.1"
 bind_port = ...
@@ -51,26 +54,27 @@ event_dispatch_thread_size = 4
 coder: DuckCoder = ...
 socket_factory: DuckSocketFactory = ...
 config = DuckRpcServerConfig(
-        name="rpc-server",
-        bind_addr=bind_addr,
-        bind_port=bind_port,
-        backlog=backlog,
-        packet_dispatch_thread_size=packet_dispatch_thread_size,
-        coder=coder,
-        socket_factory=socket_factory
-    )
+    name="rpc-server",
+    bind_addr=bind_addr,
+    bind_port=bind_port,
+    backlog=backlog,
+    packet_dispatch_thread_size=packet_dispatch_thread_size,
+    coder=coder,
+    socket_factory=socket_factory
+)
 event_config = DuckSocketEventDispatchConfig(select_timeout=0.2,
-                                                 dispatch_thread_size=event_dispatch_thread_size,
-                                                 dispatch_mode=EventDispatchMode.THREAD)
+                                             dispatch_thread_size=event_dispatch_thread_size,
+                                             dispatch_mode=EventDispatchMode.THREAD)
 rpc_server = DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 rpc_server.start()
 ```
 ### 1.1.4 start rpc client
+
 ```python
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
-from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig, EventDispatchMode
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig, EventDispatchMode
 
 packet_dispatch_thread_size = 4
 event_dispatch_thread_size = 4
@@ -79,17 +83,17 @@ socket_factory: DuckSocketFactory = ...
 remote_addr = ...
 remote_port = ...
 config: DuckRpcClientConfig = DuckRpcClientConfig(
-        name="rpc_client",
-        core_conn_size=1,
-        max_conn_size=1,
-        timeout_default=600,
-        remote_addr=remote_addr,
-        remote_port=remote_port,
-        packet_dispatch_thread_size=packet_dispatch_thread_size,
-        coder=coder,
-        socket_factory=socket_factory
-    )
-event_config = DuckSocketEventDispatchConfig(select_timeout=0.1, 
+    name="rpc_client",
+    core_conn_size=1,
+    max_conn_size=1,
+    timeout_default=600,
+    remote_addr=remote_addr,
+    remote_port=remote_port,
+    packet_dispatch_thread_size=packet_dispatch_thread_size,
+    coder=coder,
+    socket_factory=socket_factory
+)
+event_config = DuckSocketEventDispatchConfig(select_timeout=0.1,
                                              dispatch_thread_size=event_dispatch_thread_size,
                                              dispatch_mode=EventDispatchMode.THREAD)
 rpc_client = DuckRpcClient(config=config, event_config=event_config)

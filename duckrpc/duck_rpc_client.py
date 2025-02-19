@@ -15,7 +15,7 @@ from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_send import DuckSocketSender
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 from .duck_socket_recv import DuckSocketReceiver
-from .duck_socket_event import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
+from .duck_socket_event_dispatch import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16

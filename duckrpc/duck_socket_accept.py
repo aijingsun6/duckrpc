@@ -4,7 +4,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_coder import DuckCoder
-from .duck_socket_event import DuckSocketEventHandler, DuckSocketEventDispatch
+from .duck_socket_event_dispatch import DuckSocketEventHandler, DuckSocketEventDispatch
 from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
 
 

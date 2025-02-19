@@ -11,7 +11,7 @@ from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig, EventDispatchMode
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 
 logging.basicConfig(stream=sys.stdout,
@@ -62,8 +62,7 @@ def build_rpc_server(event_dispatch_thread_size=4, packet_dispatch_thread_size=4
         socket_factory=EchoSocketFactory()
     )
     event_config = DuckSocketEventDispatchConfig(select_timeout=0.2,
-                                                 dispatch_thread_size=event_dispatch_thread_size,
-                                                 dispatch_mode=EventDispatchMode.THREAD)
+                                                 dispatch_thread_size=event_dispatch_thread_size)
     return DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 
 

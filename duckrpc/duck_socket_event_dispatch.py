@@ -6,16 +6,10 @@ import queue
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
-from enum import EnumType
+from typing import Union
 
 SELECT_TIMEOUT_DEFAULT = 1.0
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
-
-
-class EventDispatchMode(EnumType):
-    THREAD = "THREAD"
-    ASYNCIO = "ASYNCIO"
-    SINGLE = "SINGLE"  # dispatch with select thread
 
 
 class DuckSocketEventHandler(ABC):
@@ -26,21 +20,15 @@ class DuckSocketEventHandler(ABC):
 
 
 class DuckSocketEventDispatchConfig(object):
-    select_timeout: int | float
-    dispatch_mode: EventDispatchMode
+    select_timeout: Union[int, float]
     dispatch_thread_size: int
 
     def __init__(self,
-                 select_timeout: int | float = SELECT_TIMEOUT_DEFAULT,
-                 dispatch_mode: EventDispatchMode = EventDispatchMode.THREAD,
+                 select_timeout: Union[int, float] = SELECT_TIMEOUT_DEFAULT,
                  dispatch_thread_size: int = DISPATCH_THREAD_SIZE_DEFAULT):
         if select_timeout is None or select_timeout < 0:
             select_timeout = SELECT_TIMEOUT_DEFAULT
         self.select_timeout = select_timeout
-
-        if dispatch_mode is None:
-            dispatch_mode = EventDispatchMode.THREAD
-        self.dispatch_mode = dispatch_mode
 
         if dispatch_thread_size is None or int(dispatch_thread_size) < 1:
             dispatch_thread_size = DISPATCH_THREAD_SIZE_DEFAULT
@@ -84,17 +72,10 @@ class DuckSocketEventDispatch(object):
             self.logger.debug(f"select end, events: {len(events)}")
             if len(events) < 1:
                 continue
-            if self.config.dispatch_mode == EventDispatchMode.SINGLE:
-                self.dispatch_with_single(events=events)
-            elif self.config.dispatch_mode == EventDispatchMode.THREAD:
-                self.dispatch_with_thread(events=events)
+            self._dispatch_events(events)
 
-    def dispatch_with_single(self, events):
-        for key, mask in events:
-            handler: DuckSocketEventHandler = key.data
-            handler.handle_event(key.fileobj, mask=mask)
 
-    def _do_dispatch_with_thread(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
+    def _do_dispatch_events(self, q: queue.Queue[tuple[selectors.SelectorKey, int]]):
         event: tuple[selectors.SelectorKey, int] = q.get()
         try:
             fileobj = event[0].fileobj
@@ -107,11 +88,11 @@ class DuckSocketEventDispatch(object):
         finally:
             q.task_done()
 
-    def dispatch_with_thread(self, events):
+    def _dispatch_events(self, events):
         q = queue.Queue()
         for recv in events:
             q.put(recv)
-            self.dispatch_executor.submit(self._do_dispatch_with_thread, q)
+            self.dispatch_executor.submit(self._do_dispatch_events, q)
         q.join()
 
     def register(self, fileobj, events, data: DuckSocketEventHandler = None):

@@ -7,7 +7,7 @@ from .duck_packet import DuckPacket
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_coder import DuckCoder
 from .duck_socket_recv import DuckSocketReceiver, RecvResult
-from .duck_socket_event import DuckSocketEventHandler
+from .duck_socket_event_dispatch import DuckSocketEventHandler
 
 
 class DuckSocketDispatchHandler(ABC):

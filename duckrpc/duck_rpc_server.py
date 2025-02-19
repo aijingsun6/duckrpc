@@ -14,7 +14,7 @@ from .duck_socket_send import DuckSocketSender
 from .duck_socket_wrap import DuckSocketWrap
 from .duck_socket_accept import DuckSocketAccept
 from .duck_socket_dispatch import DuckSocketDispatchHandler
-from .duck_socket_event import DuckSocketEventDispatch, EventDispatchMode, DuckSocketEventDispatchConfig
+from .duck_socket_event_dispatch import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
 
 EVENT_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 PACKET_DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
@@ -35,7 +35,6 @@ class DuckRpcServerConfig(object):
                  bind_addr="127.0.0.1",
                  bind_port=18080,
                  backlog=100,
-                 event_dispatch_mode=EventDispatchMode.THREAD,
                  event_dispatch_thread_size=EVENT_DISPATCH_THREAD_SIZE_DEFAULT,
                  packet_dispatch_thread_size=PACKET_DISPATCH_THREAD_SIZE_DEFAULT,
                  coder: DuckCoder = DefaultDuckCoder(),
@@ -46,9 +45,6 @@ class DuckRpcServerConfig(object):
         self.bind_port = bind_port
         backlog = max(1, backlog)
         self.backlog = backlog
-        if event_dispatch_mode is None:
-            event_dispatch_mode = EventDispatchMode.THREAD
-        self.event_dispatch_mode = event_dispatch_mode
         if event_dispatch_thread_size is None or event_dispatch_thread_size < 1:
             event_dispatch_thread_size = EVENT_DISPATCH_THREAD_SIZE_DEFAULT
         self.event_dispatch_thread_size = event_dispatch_thread_size

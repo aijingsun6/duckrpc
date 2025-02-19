@@ -8,7 +8,7 @@ from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
-from duckrpc.duck_socket_event import DuckSocketEventDispatchConfig
+from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
 from echo_socket_server import EchoSocketServer
 
 logging.basicConfig(stream=sys.stdout,
