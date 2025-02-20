@@ -4,15 +4,15 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 from .duck_socket import DuckSocket
 from .duck_coder import DuckCoder
-from .duck_socket_event_dispatch import DuckSocketEventHandler, DuckSocketEventDispatch
-from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
+from .duck_event_dispatch import DuckEventHandler, DuckEventDispatch
+from .duck_packet_dispatch import DuckPacketDispatchHandler, DuckPacketDispatch
 
 
-class DuckSocketAccept(DuckSocketEventHandler):
+class DuckAccept(DuckEventHandler):
     socket_wrap: DuckSocket
     coder: DuckCoder
-    socket_event_dispatch: DuckSocketEventDispatch
-    dispatch_handler: DuckSocketDispatchHandler
+    socket_event_dispatch: DuckEventDispatch
+    dispatch_handler: DuckPacketDispatchHandler
     dispatch_executor: ThreadPoolExecutor
     logger: logging.Logger
     _origin_logger: logging.Logger
@@ -20,8 +20,8 @@ class DuckSocketAccept(DuckSocketEventHandler):
     def __init__(self,
                  socket_wrap: DuckSocket,
                  coder: DuckCoder,
-                 socket_event_dispatch: DuckSocketEventDispatch,
-                 dispatch_handler: DuckSocketDispatchHandler,
+                 socket_event_dispatch: DuckEventDispatch,
+                 dispatch_handler: DuckPacketDispatchHandler,
                  dispatch_executor: ThreadPoolExecutor,
                  logger=None):
         self.socket_wrap = socket_wrap
@@ -37,13 +37,13 @@ class DuckSocketAccept(DuckSocketEventHandler):
 
     def handle_event(self, fileobj, mask: int) -> None:
         with self.socket_wrap.read_lock:
-            sock, addr = self.socket_wrap.sock.accept()  # 应当已就绪
+            sock, addr = self.socket_wrap.sock.accept()
             sock.setblocking(False)
             self.logger.debug(f"accept {sock}")
             socket_wrap: DuckSocket = DuckSocket(sock=sock)
-            dispatch: DuckSocketDispatch = DuckSocketDispatch(sock=socket_wrap,
+            dispatch: DuckPacketDispatch = DuckPacketDispatch(sock=socket_wrap,
                                                               coder=self.coder,
-                                                              dispatch_handler=self.dispatch_handler,
+                                                              packet_handler=self.dispatch_handler,
                                                               dispatch_executor=self.dispatch_executor,
                                                               logger=self._origin_logger)
             self.socket_event_dispatch.register(sock, selectors.EVENT_READ, dispatch)

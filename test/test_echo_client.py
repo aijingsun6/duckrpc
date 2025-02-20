@@ -3,35 +3,21 @@ import socket
 import unittest
 import logging
 import sys
-from duckrpc.duck_rpc_server import DuckRpcBodyHandler
+from duckrpc.duck_rpc_server import DuckRpcPacketHandler
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_packet import DuckPacket
+from duckrpc.duck_socket import DuckSocket
 from duckrpc.duck_factory import DuckSocketFactory
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
+from duckrpc.duck_event_dispatch import DuckEventDispatchConfig
 from echo_socket_server import EchoSocketServer
+from json_coder import JsonCoder
 
 logging.basicConfig(stream=sys.stdout,
                     level=logging.DEBUG,
                     format="%(asctime)s %(name)s %(levelname)s %(threadName)s %(filename)s %(lineno)d %(message)s")
 logger = logging.getLogger(__name__)
 
-
-class EchoHandler(DuckRpcBodyHandler):
-
-    def handle_body(self, body: any) -> any:
-        logging.info(f"handle {body}")
-        return body
-
-
-class EchoCoder(DuckCoder):
-    def encode_packet(self, packet: DuckPacket) -> bytes:
-        return json.dumps(packet.__dict__).encode("utf-8")
-
-    def decode_packet(self, data: bytes) -> DuckPacket:
-        packet = DuckPacket()
-        packet.__dict__ = json.loads(data.decode("utf-8"))
-        return packet
 
 
 class EchoSocketFactory(DuckSocketFactory):
@@ -61,10 +47,10 @@ def build_rpc_client():
         remote_addr=BIND_ADDR,
         remote_port=BIND_PORT,
         packet_dispatch_thread_size=1,
-        coder=EchoCoder(),
+        coder=JsonCoder(),
         socket_factory=DuckSocketFactory()
     )
-    event_config = DuckSocketEventDispatchConfig(select_timeout=1.0, dispatch_thread_size=1)
+    event_config = DuckEventDispatchConfig(select_timeout=1.0, dispatch_thread_size=1)
     return DuckRpcClient(config=config, event_config=event_config)
 
 

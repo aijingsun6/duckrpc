@@ -34,13 +34,13 @@ class SimpleSocketFactory(DuckSocketFactory):
 ### 1.1.3 start rpc server
 
 ```python
-from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
+from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcPacketHandler
+from duckrpc.duck_event_dispatch import DuckEventDispatchConfig
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
 
 
-class EchoHandler(DuckRpcBodyHandler):
+class EchoHandler(DuckRpcPacketHandler):
 
     def handle_body(self, body: any) -> any:
         return body
@@ -62,8 +62,8 @@ config = DuckRpcServerConfig(
     coder=coder,
     socket_factory=socket_factory
 )
-event_config = DuckSocketEventDispatchConfig(select_timeout=0.2,
-                                             dispatch_thread_size=event_dispatch_thread_size)
+event_config = DuckEventDispatchConfig(select_timeout=0.2,
+                                       dispatch_thread_size=event_dispatch_thread_size)
 rpc_server = DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 rpc_server.start()
 ```
@@ -73,7 +73,7 @@ rpc_server.start()
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
 from duckrpc.duck_coder import DuckCoder
 from duckrpc.duck_factory import DuckSocketFactory
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
+from duckrpc.duck_event_dispatch import DuckEventDispatchConfig
 
 packet_dispatch_thread_size = 4
 event_dispatch_thread_size = 4
@@ -92,8 +92,8 @@ config: DuckRpcClientConfig = DuckRpcClientConfig(
     coder=coder,
     socket_factory=socket_factory
 )
-event_config = DuckSocketEventDispatchConfig(select_timeout=0.1,
-                                             dispatch_thread_size=event_dispatch_thread_size)
+event_config = DuckEventDispatchConfig(select_timeout=0.1,
+                                       dispatch_thread_size=event_dispatch_thread_size)
 rpc_client = DuckRpcClient(config=config, event_config=event_config)
 ```
 ### 1.1.4 rpc call

@@ -12,8 +12,8 @@ from .duck_pool import DuckPool, DuckPoolConfig
 from .duck_factory import DuckFactory, DuckSocketFactory
 from .duck_packet import DuckPacket
 from .duck_socket import DuckSocket
-from .duck_socket_dispatch import DuckSocketDispatchHandler, DuckSocketDispatch
-from .duck_socket_event_dispatch import DuckSocketEventDispatch, DuckSocketEventDispatchConfig
+from .duck_packet_dispatch import DuckPacketDispatchHandler, DuckPacketDispatch
+from .duck_event_dispatch import DuckEventDispatch, DuckEventDispatchConfig
 
 CORE_SIZE_DEFAULT = 8
 MAX_SIZE_DEFAULT = 16
@@ -66,11 +66,11 @@ class DuckRpcClientConfig(object):
         self.socket_factory = socket_factory
 
 
-class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
+class DuckRpcClient(DuckFactory, DuckPacketDispatchHandler):
     logger: logging.Logger
     _origin_logger: logging.Logger
     config: DuckRpcClientConfig
-    socket_event_dispatch: DuckSocketEventDispatch
+    socket_event_dispatch: DuckEventDispatch
     packet_dispatch_executor: ThreadPoolExecutor
 
     _shutdown_flag: bool
@@ -79,7 +79,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
 
     def __init__(self,
                  config: DuckRpcClientConfig = None,
-                 event_config: DuckSocketEventDispatchConfig = None,
+                 event_config: DuckEventDispatchConfig = None,
                  logger=None):
         if logger is None:
             self.logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
             self.logger = logger
         self._origin_logger = logger
         self.config = config
-        self.socket_event_dispatch = DuckSocketEventDispatch(config=event_config, logger=logger)
+        self.socket_event_dispatch = DuckEventDispatch(config=event_config, logger=logger)
         self.packet_dispatch_executor = ThreadPoolExecutor(thread_name_prefix=f"packet-dispatch-{self.config.name}",
                                                            max_workers=self.config.packet_dispatch_thread_size)
         self._shutdown_flag = False
@@ -103,9 +103,9 @@ class DuckRpcClient(DuckFactory, DuckSocketDispatchHandler):
         sock.connect((self.config.remote_addr, self.config.remote_port))
         sock.setblocking(False)
         socket_wrap = DuckSocket(sock=sock)
-        socket_dispatch = DuckSocketDispatch(sock=socket_wrap,
+        socket_dispatch = DuckPacketDispatch(sock=socket_wrap,
                                              coder=self.config.coder,
-                                             dispatch_handler=self,
+                                             packet_handler=self,
                                              dispatch_executor=self.packet_dispatch_executor,
                                              logger=self._origin_logger)
         self.socket_event_dispatch.register(sock, selectors.EVENT_READ, socket_dispatch)

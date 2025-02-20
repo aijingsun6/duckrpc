@@ -1,4 +1,3 @@
-import json
 import queue
 import socket
 import unittest
@@ -7,12 +6,14 @@ import sys
 import time
 from concurrent.futures.thread import ThreadPoolExecutor
 
-from duckrpc.duck_coder import DuckCoder
-from duckrpc.duck_packet import DuckPacket
+
 from duckrpc.duck_factory import DuckSocketFactory
-from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer, DuckRpcBodyHandler
-from duckrpc.duck_socket_event_dispatch import DuckSocketEventDispatchConfig
+from duckrpc.duck_rpc_server import DuckRpcServerConfig, DuckRpcServer
+from duckrpc.duck_event_dispatch import DuckEventDispatchConfig
 from duckrpc.duck_rpc_client import DuckRpcClientConfig, DuckRpcClient
+from json_coder import JsonCoder
+from echo_packet_handler import EchoHandler
+
 
 logging.basicConfig(stream=sys.stdout,
                     level=logging.WARNING,
@@ -20,21 +21,9 @@ logging.basicConfig(stream=sys.stdout,
 logger = logging.getLogger(__name__)
 
 
-class EchoHandler(DuckRpcBodyHandler):
-
-    def handle_body(self, body: any) -> any:
-        # logging.info(f"handle {body}")
-        return body
 
 
-class EchoCoder(DuckCoder):
-    def encode_packet(self, packet: DuckPacket) -> bytes:
-        return json.dumps(packet.__dict__).encode("utf-8")
 
-    def decode_packet(self, data: bytes) -> DuckPacket:
-        packet = DuckPacket()
-        packet.__dict__ = json.loads(data.decode("utf-8"))
-        return packet
 
 
 class EchoSocketFactory(DuckSocketFactory):
@@ -58,11 +47,11 @@ def build_rpc_server(event_dispatch_thread_size=4, packet_dispatch_thread_size=4
         bind_port=BIND_PORT,
         backlog=BACKLOG,
         packet_dispatch_thread_size=packet_dispatch_thread_size,
-        coder=EchoCoder(),
+        coder=JsonCoder(),
         socket_factory=EchoSocketFactory()
     )
-    event_config = DuckSocketEventDispatchConfig(select_timeout=0.2,
-                                                 dispatch_thread_size=event_dispatch_thread_size)
+    event_config = DuckEventDispatchConfig(select_timeout=0.2,
+                                           dispatch_thread_size=event_dispatch_thread_size)
     return DuckRpcServer(config=config, event_config=event_config, handler=EchoHandler())
 
 
@@ -75,10 +64,10 @@ def build_rpc_client(event_dispatch_thread_size=4, packet_dispatch_thread_size=4
         remote_addr=BIND_ADDR,
         remote_port=BIND_PORT,
         packet_dispatch_thread_size=packet_dispatch_thread_size,
-        coder=EchoCoder(),
+        coder=JsonCoder(),
         socket_factory=DuckSocketFactory()
     )
-    event_config = DuckSocketEventDispatchConfig(select_timeout=0.1, dispatch_thread_size=event_dispatch_thread_size)
+    event_config = DuckEventDispatchConfig(select_timeout=0.1, dispatch_thread_size=event_dispatch_thread_size)
     return DuckRpcClient(config=config, event_config=event_config)
 
 

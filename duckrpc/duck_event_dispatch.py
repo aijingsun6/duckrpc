@@ -12,14 +12,14 @@ SELECT_TIMEOUT_DEFAULT = 1.0
 DISPATCH_THREAD_SIZE_DEFAULT = min(32, (os.cpu_count() or 1) + 4)
 
 
-class DuckSocketEventHandler(ABC):
+class DuckEventHandler(ABC):
 
     @abstractmethod
     def handle_event(self, fileobj, mask: int) -> None:
         raise NotImplementedError()
 
 
-class DuckSocketEventDispatchConfig(object):
+class DuckEventDispatchConfig(object):
     name: str
     select_timeout: Union[int, float]
     dispatch_thread_size: int
@@ -38,8 +38,8 @@ class DuckSocketEventDispatchConfig(object):
         self.dispatch_thread_size = int(dispatch_thread_size)
 
 
-class DuckSocketEventDispatch(object):
-    config: DuckSocketEventDispatchConfig
+class DuckEventDispatch(object):
+    config: DuckEventDispatchConfig
 
     selector: selectors.DefaultSelector
     select_executor: ThreadPoolExecutor
@@ -50,7 +50,7 @@ class DuckSocketEventDispatch(object):
     _shutdown_flag: bool
 
     def __init__(self,
-                 config: DuckSocketEventDispatchConfig,
+                 config: DuckEventDispatchConfig,
                  logger=None):
         self.config = config
         self.selector = selectors.DefaultSelector()
@@ -83,7 +83,7 @@ class DuckSocketEventDispatch(object):
         try:
             fileobj = event[0].fileobj
             mask: int = event[1]
-            handle: DuckSocketEventHandler = event[0].data
+            handle: DuckEventHandler = event[0].data
             self.logger.debug(f"dispatch {fileobj}")
             handle.handle_event(fileobj=fileobj, mask=mask)
         except Exception as exp:
@@ -98,7 +98,7 @@ class DuckSocketEventDispatch(object):
             self.dispatch_executor.submit(self._do_dispatch_events, q)
         q.join()
 
-    def register(self, fileobj, events, data: DuckSocketEventHandler = None):
+    def register(self, fileobj, events, data: DuckEventHandler = None):
         self.logger.debug(f"register {fileobj} {data}")
         self._selector.register(fileobj, events, data)
 
